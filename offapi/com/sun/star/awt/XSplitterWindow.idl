@@ -1,0 +1,60 @@
+/* -*- Mode: C++; tab-width: 4; indent-tabs-mode: nil; c-basic-offset: 4 -*- */
+/*
+ * This file is part of the LibreOffice project.
+ *
+ * This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at http://mozilla.org/MPL/2.0/.
+ */
+
+#include <com/sun/star/uno/XInterface.idl>
+#include <com/sun/star/awt/XSplitListener.idl>
+
+module com {  module sun {  module star {  module awt {
+
+/** provides access to a draggable splitter bar for resizing
+    adjacent areas.
+
+    <p>Create via Toolkit::createWindow() with
+    WindowDescriptor.WindowServiceName = "splitter".</p>
+
+    @since LibreOffice 26.2
+ */
+published interface XSplitterWindow : com::sun::star::uno::XInterface
+{
+    /** adds a listener for splitter drag events. */
+    void addSplitListener(
+        [in] com::sun::star::awt::XSplitListener xListener );
+
+    /** removes a previously added split listener. */
+    void removeSplitListener(
+        [in] com::sun::star::awt::XSplitListener xListener );
+
+    /** sets the splitter position in pixels. */
+    void setSplitPosition( [in] long nPos );
+
+    /** returns the current splitter position in pixels. */
+    long getSplitPosition();
+
+    /** sets the orientation.
+
+        @param bHorizontal
+            TRUE for a horizontal splitter (dragged up/down),
+            FALSE for a vertical splitter (dragged left/right).
+     */
+    void setHorizontal( [in] boolean bHorizontal );
+
+    /** returns TRUE if the splitter is horizontal. */
+    boolean getHorizontal();
+
+    /** sets the minimum and maximum draggable range.
+
+        @param nMin minimum position in pixels
+        @param nMax maximum position in pixels
+     */
+    void setRange( [in] long nMin, [in] long nMax );
+};
+
+}; }; }; };
+
+/* vim:set shiftwidth=4 softtabstop=4 expandtab: */

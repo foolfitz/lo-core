@@ -140,6 +140,8 @@
 #include <vcl/opengl/OpenGLWrapper.hxx>
 #endif
 #include <awt/vclxspinbutton.hxx>
+#include <awt/vclxsplitter.hxx>
+#include <awt/vclxcustompaintwindow.hxx>
 #include <tools/debug.hxx>
 #include <comphelper/lok.hxx>
 #include <comphelper/diagnose_ex.hxx>
@@ -703,6 +705,7 @@ constexpr auto constComponentTypeMapping = frozen::make_unordered_map<std::u16st
     { u"checkbox",           WindowType::CHECKBOX },
     { u"combobox",           WindowType::COMBOBOX },
     { u"control",            WindowType::CONTROL },
+    { u"custompaintwindow",  WindowType::TOOLKIT_CUSTOMPAINTWINDOW },
     { u"currencybox",        WindowType::CURRENCYBOX },
     { u"currencyfield",      WindowType::CURRENCYFIELD },
     { u"datebox",            WindowType::DATEBOX },
@@ -1572,12 +1575,17 @@ vcl::Window* VCLXToolkit::ImplCreateWindow( rtl::Reference<VCLXWindow>* ppNewCom
             break;
             case WindowType::SPLITTER:
                 pNewWindow = VclPtr<Splitter>::Create( pParent, nWinBits );
+                *ppNewComp = new ::toolkit::VCLXSplitter;
             break;
             case WindowType::SPLITWINDOW:
                 pNewWindow = VclPtr<SplitWindow>::Create( pParent, nWinBits );
             break;
             case WindowType::STATUSBAR:
                 pNewWindow = VclPtr<StatusBar>::Create( pParent, nWinBits );
+            break;
+            case WindowType::TOOLKIT_CUSTOMPAINTWINDOW:
+                pNewWindow = VclPtr<::toolkit::CustomPaintVCLWindow>::Create( pParent, nWinBits );
+                *ppNewComp = new ::toolkit::VCLXCustomPaintWindow;
             break;
             case WindowType::TOOLKIT_SYSTEMCHILDWINDOW:
                 pNewWindow = VclPtr<SystemChildWindow>::Create( pParent, nWinBits );

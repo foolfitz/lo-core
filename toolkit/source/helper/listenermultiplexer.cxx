@@ -244,4 +244,12 @@ IMPL_LISTENERMULTIPLEXER_LISTENERMETHOD( SelectionListenerMultiplexer, css::awt:
 
 IMPL_LISTENERMULTIPLEXER_BASEMETHODS( TabPageListenerMultiplexer, css::awt::tab::XTabPageContainerListener )
 IMPL_LISTENERMULTIPLEXER_LISTENERMETHOD( TabPageListenerMultiplexer, css::awt::tab::XTabPageContainerListener, tabPageActivated, css::awt::tab::TabPageActivatedEvent )
+
+
+//  class SplitListenerMultiplexer
+
+IMPL_LISTENERMULTIPLEXER_BASEMETHODS( SplitListenerMultiplexer, css::awt::XSplitListener )
+IMPL_LISTENERMULTIPLEXER_LISTENERMETHOD( SplitListenerMultiplexer, css::awt::XSplitListener, splitStarted, css::awt::SplitEvent )
+IMPL_LISTENERMULTIPLEXER_LISTENERMETHOD( SplitListenerMultiplexer, css::awt::XSplitListener, splitting, css::awt::SplitEvent )
+IMPL_LISTENERMULTIPLEXER_LISTENERMETHOD( SplitListenerMultiplexer, css::awt::XSplitListener, splitEnded, css::awt::SplitEvent )
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

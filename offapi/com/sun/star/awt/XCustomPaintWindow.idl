@@ -1,0 +1,70 @@
+/* -*- Mode: C++; tab-width: 4; indent-tabs-mode: nil; c-basic-offset: 4 -*- */
+/*
+ * This file is part of the LibreOffice project.
+ *
+ * This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at http://mozilla.org/MPL/2.0/.
+ */
+
+#include <com/sun/star/uno/XInterface.idl>
+#include <com/sun/star/awt/XCustomPaintHandler.idl>
+#include <com/sun/star/awt/Rectangle.idl>
+
+module com {  module sun {  module star {  module awt {
+
+/** a window that delegates painting to an extension-provided handler.
+
+    <p>Create via Toolkit::createWindow() with
+    WindowDescriptor.WindowServiceName = "custompaintwindow".
+    Then call setPaintHandler() to register the extension's
+    paint callback.</p>
+
+    <p>Mouse and keyboard events are available via the standard
+    XMouseListener and XKeyListener on the underlying XWindow.</p>
+
+    @since LibreOffice 26.2
+ */
+published interface XCustomPaintWindow : com::sun::star::uno::XInterface
+{
+    /** sets the paint handler that will be called for each repaint.
+
+        @param xHandler
+            the handler; pass an empty reference to clear.
+     */
+    void setPaintHandler(
+        [in] com::sun::star::awt::XCustomPaintHandler xHandler );
+
+    /** returns the currently set paint handler. */
+    com::sun::star::awt::XCustomPaintHandler getPaintHandler();
+
+    /** triggers a full repaint of the window. */
+    void repaint();
+
+    /** triggers a repaint of the specified rectangular area.
+
+        @param Rect the area to repaint (pixels, in content coordinates)
+     */
+    void repaintRect( [in] com::sun::star::awt::Rectangle Rect );
+
+    /** sets the scroll offset for content coordinates.
+
+        <p>The handler draws in content coordinates; the offset
+        shifts the visible viewport. Changing the offset triggers
+        a full repaint.</p>
+
+        @param nX horizontal scroll offset in pixels
+        @param nY vertical scroll offset in pixels
+     */
+    void setScrollOffset( [in] long nX, [in] long nY );
+
+    /** returns the current horizontal scroll offset in pixels. */
+    long getScrollOffsetX();
+
+    /** returns the current vertical scroll offset in pixels. */
+    long getScrollOffsetY();
+};
+
+}; }; }; };
+
+/* vim:set shiftwidth=4 softtabstop=4 expandtab: */

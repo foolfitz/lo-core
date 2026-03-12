@@ -1,0 +1,34 @@
+/* -*- Mode: C++; tab-width: 4; indent-tabs-mode: nil; c-basic-offset: 4 -*- */
+/*
+ * This file is part of the LibreOffice project.
+ *
+ * This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at http://mozilla.org/MPL/2.0/.
+ */
+
+#include <com/sun/star/lang/XEventListener.idl>
+#include <com/sun/star/awt/SplitEvent.idl>
+
+module com {  module sun {  module star {  module awt {
+
+/** receives notifications from a splitter window when the user
+    drags the splitter bar.
+
+    @since LibreOffice 26.2
+ */
+published interface XSplitListener : com::sun::star::lang::XEventListener
+{
+    /** invoked when the user begins dragging the splitter. */
+    void splitStarted( [in] com::sun::star::awt::SplitEvent e );
+
+    /** invoked while the user is dragging (position changed). */
+    void splitting( [in] com::sun::star::awt::SplitEvent e );
+
+    /** invoked when the user finishes dragging. */
+    void splitEnded( [in] com::sun::star::awt::SplitEvent e );
+};
+
+}; }; }; };
+
+/* vim:set shiftwidth=4 softtabstop=4 expandtab: */

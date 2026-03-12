@@ -1,0 +1,43 @@
+/* -*- Mode: C++; tab-width: 4; indent-tabs-mode: nil; c-basic-offset: 4 -*- */
+/*
+ * This file is part of the LibreOffice project.
+ *
+ * This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at http://mozilla.org/MPL/2.0/.
+ */
+
+#include <com/sun/star/uno/XInterface.idl>
+#include <com/sun/star/awt/XGraphics.idl>
+#include <com/sun/star/awt/Rectangle.idl>
+
+module com {  module sun {  module star {  module awt {
+
+/** callback interface for custom painting on a window.
+
+    <p>Implement this interface and register it via
+    XCustomPaintWindow::setPaintHandler(). The paint() method is
+    called synchronously during VCL repaint with SolarMutex held.</p>
+
+    @since LibreOffice 26.2
+ */
+published interface XCustomPaintHandler : com::sun::star::uno::XInterface
+{
+    /** called when the window needs to be painted.
+
+        <p>The graphics context is valid only during this call.
+        Do not store a reference to it.</p>
+
+        @param xGraphics
+            the graphics context to draw on; supports XGraphics3
+            methods (measureText, drawTextInRect, etc.)
+        @param UpdateArea
+            the rectangle that needs repainting, in content coordinates
+     */
+    void paint( [in] com::sun::star::awt::XGraphics xGraphics,
+                [in] com::sun::star::awt::Rectangle UpdateArea );
+};
+
+}; }; }; };
+
+/* vim:set shiftwidth=4 softtabstop=4 expandtab: */

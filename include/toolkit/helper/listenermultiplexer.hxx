@@ -37,6 +37,7 @@
 #include <com/sun/star/container/XContainerListener.hpp>
 #include <com/sun/star/awt/XSpinListener.hpp>
 #include <com/sun/star/awt/XAdjustmentListener.hpp>
+#include <com/sun/star/awt/XSplitListener.hpp>
 #include <com/sun/star/awt/XMenuListener.hpp>
 #include <com/sun/star/awt/tree/XTreeExpansionListener.hpp>
 #include <com/sun/star/awt/tree/XTreeEditListener.hpp>
@@ -302,6 +303,15 @@ DECL_LISTENERMULTIPLEXER_END
 
 DECL_LISTENERMULTIPLEXER_START( TabPageListenerMultiplexer, css::awt::tab::XTabPageContainerListener )
     void SAL_CALL tabPageActivated( const css::awt::tab::TabPageActivatedEvent& aEvent ) override;
+DECL_LISTENERMULTIPLEXER_END
+
+
+//  class SplitListenerMultiplexer
+
+DECL_LISTENERMULTIPLEXER_START( SplitListenerMultiplexer, css::awt::XSplitListener )
+    void SAL_CALL splitStarted( const css::awt::SplitEvent& e ) override;
+    void SAL_CALL splitting( const css::awt::SplitEvent& e ) override;
+    void SAL_CALL splitEnded( const css::awt::SplitEvent& e ) override;
 DECL_LISTENERMULTIPLEXER_END
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

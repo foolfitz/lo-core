@@ -1745,6 +1745,7 @@ $(eval $(call gb_UnoApi_add_idlfiles,offapi,com/sun/star/awt,\
 	SimpleFontMetric \
 	Size \
 	SpinEvent \
+	SplitEvent \
 	Style \
 	SystemDependentXWindow \
 	SystemPointer \
@@ -1774,6 +1775,8 @@ $(eval $(call gb_UnoApi_add_idlfiles,offapi,com/sun/star/awt,\
 	XControlContainer \
 	XControlModel \
 	XCurrencyField \
+	XCustomPaintHandler \
+	XCustomPaintWindow \
 	XDataTransferProviderAccess \
 	XDateField \
 	XDevice \
@@ -1842,6 +1845,8 @@ $(eval $(call gb_UnoApi_add_idlfiles,offapi,com/sun/star/awt,\
 	XSpinField \
 	XSpinListener \
 	XSpinValue \
+	XSplitListener \
+	XSplitterWindow \
 	XStyleChangeListener \
 	XStyleSettings \
 	XStyleSettingsSupplier \

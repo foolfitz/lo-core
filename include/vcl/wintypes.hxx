@@ -104,6 +104,7 @@ enum class WindowType : sal_uInt16
     // only used in vclxtoolkit.cxx
     TOOLKIT_FRAMEWINDOW        = 0x1000,
     TOOLKIT_SYSTEMCHILDWINDOW  = 0x1001,
+    TOOLKIT_CUSTOMPAINTWINDOW  = 0x1002,
 };
 
 // Window-Bits
