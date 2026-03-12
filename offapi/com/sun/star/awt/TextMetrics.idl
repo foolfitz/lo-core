@@ -1,0 +1,43 @@
+/* -*- Mode: C++; tab-width: 4; indent-tabs-mode: nil; c-basic-offset: 4 -*- */
+/*
+ * This file is part of the LibreOffice project.
+ *
+ * This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at http://mozilla.org/MPL/2.0/.
+ */
+
+module com {  module sun {  module star {  module awt {
+
+/** describes metrics for text measured within a bounding area.
+
+    @since LibreOffice 26.2
+ */
+published struct TextMetrics
+{
+    /** the width of the bounding rectangle of the measured text,
+        in pixels.
+     */
+    long Width;
+
+    /** the height of the bounding rectangle of the measured text,
+        in pixels.
+     */
+    long Height;
+
+    /** the maximum line width among all lines, in pixels.
+     */
+    long MaxLineWidth;
+
+    /** the number of lines the text would occupy.
+     */
+    short LineCount;
+
+    /** whether the text was truncated with an ellipsis.
+     */
+    boolean IsEllipsis;
+};
+
+}; }; }; };
+
+/* vim:set shiftwidth=4 softtabstop=4 expandtab: */

@@ -1748,6 +1748,7 @@ $(eval $(call gb_UnoApi_add_idlfiles,offapi,com/sun/star/awt,\
 	Style \
 	SystemDependentXWindow \
 	SystemPointer \
+	TextMetrics \
 	TextAlign \
 	TextEvent \
 	VclContainerEvent \
@@ -1798,6 +1799,7 @@ $(eval $(call gb_UnoApi_add_idlfiles,offapi,com/sun/star/awt,\
 	XFontMappingUseItem \
 	XGraphics \
 	XGraphics2 \
+	XGraphics3 \
 	XImageButton \
 	XImageConsumer \
 	XImageProducer \

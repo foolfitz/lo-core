@@ -1,0 +1,93 @@
+/* -*- Mode: C++; tab-width: 4; indent-tabs-mode: nil; c-basic-offset: 4 -*- */
+/*
+ * This file is part of the LibreOffice project.
+ *
+ * This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at http://mozilla.org/MPL/2.0/.
+ */
+
+#include <com/sun/star/awt/XGraphics2.idl>
+#include <com/sun/star/awt/Rectangle.idl>
+#include <com/sun/star/awt/TextMetrics.idl>
+
+module com {  module sun {  module star {  module awt {
+
+/** extends XGraphics2 with text measurement and multi-line text drawing.
+
+    @since LibreOffice 26.2
+ */
+published interface XGraphics3: com::sun::star::awt::XGraphics2
+{
+    /** returns the width of the given text string in pixels,
+        using the currently selected font.
+
+        @param Text
+            the text string to measure
+
+        @returns
+            the width in pixels
+     */
+    long getTextWidth( [in] string Text );
+
+    /** returns the height of a single line of text in pixels,
+        using the currently selected font.
+
+        @returns
+            the line height in pixels
+     */
+    long getTextHeight();
+
+    /** measures how text would be laid out within a maximum width,
+        with automatic word wrapping.
+
+        @param Text
+            the text to measure
+
+        @param MaxWidth
+            the maximum width in pixels; text exceeding this width
+            will be wrapped at word boundaries
+
+        @returns
+            a TextMetrics struct describing the bounding rectangle,
+            line count, and whether ellipsis was applied
+     */
+    TextMetrics measureText( [in] string Text,
+                             [in] long MaxWidth );
+
+    /** draws text within a rectangle, with alignment and wrapping
+        controlled by flags.
+
+        <p>The text is drawn using the currently selected font and
+        text color. It is clipped to the specified rectangle.</p>
+
+        <p>The following flag values can be combined with bitwise OR:</p>
+        <ul>
+            <li><code>0x0010</code> - Left alignment (default)</li>
+            <li><code>0x0020</code> - Center alignment</li>
+            <li><code>0x0040</code> - Right alignment</li>
+            <li><code>0x0080</code> - Top alignment (default)</li>
+            <li><code>0x0100</code> - Vertical center</li>
+            <li><code>0x0200</code> - Bottom alignment</li>
+            <li><code>0x0400</code> - End ellipsis (truncate with "...")</li>
+            <li><code>0x1000</code> - Multi-line</li>
+            <li><code>0x2000</code> - Word break</li>
+        </ul>
+
+        @param Rect
+            the bounding rectangle for text layout
+
+        @param Text
+            the text to draw
+
+        @param Flags
+            a combination of text drawing flags
+     */
+    void drawTextInRect( [in] Rectangle Rect,
+                         [in] string Text,
+                         [in] long Flags );
+};
+
+}; }; }; };
+
+/* vim:set shiftwidth=4 softtabstop=4 expandtab: */

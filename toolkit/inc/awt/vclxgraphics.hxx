@@ -27,7 +27,7 @@
 #include <vcl/rendercontext/RasterOp.hxx>
 #include <vcl/vclptr.hxx>
 
-#include <com/sun/star/awt/XGraphics2.hpp>
+#include <com/sun/star/awt/XGraphics3.hpp>
 
 #include <memory>
 
@@ -51,7 +51,7 @@ namespace o3tl
 
 
 class VCLXGraphics final : public cppu::WeakImplHelper<
-                        css::awt::XGraphics2>
+                        css::awt::XGraphics3>
 {
 private:
     // used to return same reference on each call to getDevice()
@@ -112,6 +112,12 @@ public:
     virtual void SAL_CALL drawText( ::sal_Int32 X, ::sal_Int32 Y, const OUString& Text ) override;
     virtual void SAL_CALL drawTextArray( ::sal_Int32 X, ::sal_Int32 Y, const OUString& Text, const css::uno::Sequence< ::sal_Int32 >& Longs ) override;
     virtual void SAL_CALL drawImage( ::sal_Int32 nX, ::sal_Int32 nY, ::sal_Int32 nWidth, ::sal_Int32 nHeight, ::sal_Int16 nStyle, const css::uno::Reference< css::graphic::XGraphic >& aGraphic ) override;
+
+    // css::awt::XGraphics3
+    virtual ::sal_Int32 SAL_CALL getTextWidth( const OUString& Text ) override;
+    virtual ::sal_Int32 SAL_CALL getTextHeight() override;
+    virtual css::awt::TextMetrics SAL_CALL measureText( const OUString& Text, ::sal_Int32 MaxWidth ) override;
+    virtual void SAL_CALL drawTextInRect( const css::awt::Rectangle& Rect, const OUString& Text, ::sal_Int32 Flags ) override;
 };
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

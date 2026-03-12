@@ -40,6 +40,7 @@ public:
 
     tools::Long                GetMaxLineWidth() const { return mnMaxWidth; }
     bool                IsEllipses() const { return mbEllipsis; }
+    sal_uInt16          GetLineCount() const { return mnLineCount; }
 
     bool                operator ==( const TextRectInfo& rInfo ) const
                             { return ((mnMaxWidth   == rInfo.mnMaxWidth)    &&

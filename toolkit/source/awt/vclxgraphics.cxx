@@ -29,7 +29,9 @@
 #include <vcl/kernarray.hxx>
 #include <vcl/gradient.hxx>
 #include <vcl/metric.hxx>
+#include <vcl/textrectinfo.hxx>
 #include <vcl/unohelp.hxx>
+#include <com/sun/star/awt/TextMetrics.hpp>
 #include <tools/debug.hxx>
 
 using namespace com::sun::star;
@@ -485,4 +487,64 @@ void VCLXGraphics::drawImage( sal_Int32 x, sal_Int32 y, sal_Int32 width, sal_Int
         }
     }
 }
+
+sal_Int32 VCLXGraphics::getTextWidth( const OUString& rText )
+{
+    SolarMutexGuard aGuard;
+
+    if( mpOutputDevice )
+    {
+        InitOutputDevice( InitOutDevFlags::FONT );
+        return mpOutputDevice->GetTextWidth( rText );
+    }
+    return 0;
+}
+
+sal_Int32 VCLXGraphics::getTextHeight()
+{
+    SolarMutexGuard aGuard;
+
+    if( mpOutputDevice )
+    {
+        InitOutputDevice( InitOutDevFlags::FONT );
+        return mpOutputDevice->GetTextHeight();
+    }
+    return 0;
+}
+
+css::awt::TextMetrics VCLXGraphics::measureText( const OUString& rText, sal_Int32 nMaxWidth )
+{
+    SolarMutexGuard aGuard;
+    css::awt::TextMetrics aMetrics{};
+
+    if( mpOutputDevice )
+    {
+        InitOutputDevice( InitOutDevFlags::FONT );
+
+        tools::Rectangle aInput( Point( 0, 0 ), Size( nMaxWidth, 0x7FFFFFFF ) );
+        DrawTextFlags nFlags = DrawTextFlags::WordBreak | DrawTextFlags::MultiLine;
+        TextRectInfo aInfo;
+        tools::Rectangle aResult = mpOutputDevice->GetTextRect( aInput, rText, nFlags, &aInfo );
+
+        aMetrics.Width = aResult.GetWidth();
+        aMetrics.Height = aResult.GetHeight();
+        aMetrics.MaxLineWidth = aInfo.GetMaxLineWidth();
+        aMetrics.LineCount = aInfo.GetLineCount();
+        aMetrics.IsEllipsis = aInfo.IsEllipses();
+    }
+    return aMetrics;
+}
+
+void VCLXGraphics::drawTextInRect( const css::awt::Rectangle& aRect, const OUString& rText, sal_Int32 nFlags )
+{
+    SolarMutexGuard aGuard;
+
+    if( mpOutputDevice )
+    {
+        InitOutputDevice( InitOutDevFlags::FONT | InitOutDevFlags::COLORS );
+        tools::Rectangle aVCLRect( Point( aRect.X, aRect.Y ), Size( aRect.Width, aRect.Height ) );
+        mpOutputDevice->DrawText( aVCLRect, rText, static_cast<DrawTextFlags>(nFlags) );
+    }
+}
+
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */
