@@ -117,6 +117,7 @@ public:
     virtual ::sal_Int32 SAL_CALL getTextWidth( const OUString& Text ) override;
     virtual ::sal_Int32 SAL_CALL getTextHeight() override;
     virtual css::awt::TextMetrics SAL_CALL measureText( const OUString& Text, ::sal_Int32 MaxWidth ) override;
+    virtual css::awt::TextLayoutMetrics SAL_CALL measureTextInRect( const css::awt::Rectangle& Rect, const OUString& Text, ::sal_Int32 Flags ) override;
     virtual void SAL_CALL drawTextInRect( const css::awt::Rectangle& Rect, const OUString& Text, ::sal_Int32 Flags ) override;
 };
 

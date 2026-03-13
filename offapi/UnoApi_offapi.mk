@@ -1749,6 +1749,7 @@ $(eval $(call gb_UnoApi_add_idlfiles,offapi,com/sun/star/awt,\
 	Style \
 	SystemDependentXWindow \
 	SystemPointer \
+	TextLayoutMetrics \
 	TextMetrics \
 	TextAlign \
 	TextEvent \

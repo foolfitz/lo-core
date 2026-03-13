@@ -9,6 +9,7 @@
 
 #include <com/sun/star/awt/XGraphics2.idl>
 #include <com/sun/star/awt/Rectangle.idl>
+#include <com/sun/star/awt/TextLayoutMetrics.idl>
 #include <com/sun/star/awt/TextMetrics.idl>
 
 module com {  module sun {  module star {  module awt {
@@ -54,6 +55,33 @@ published interface XGraphics3: com::sun::star::awt::XGraphics2
      */
     TextMetrics measureText( [in] string Text,
                              [in] long MaxWidth );
+
+    /** measures how text would be laid out within a rectangle, using
+        the same flags contract as drawTextInRect().
+
+        <p>The measurement uses the current font and the exact
+        rectangle and flags that would later be passed to
+        drawTextInRect(), making it suitable for layout code that
+        needs bounds consistent with actual rendering.</p>
+
+        @param Rect
+            the bounding rectangle for text layout
+
+        @param Text
+            the text to measure
+
+        @param Flags
+            a combination of text drawing flags
+
+        @returns
+            a TextLayoutMetrics struct describing the used text bounds
+            and line information for the measured layout
+
+        @since LibreOffice 26.8
+     */
+    TextLayoutMetrics measureTextInRect( [in] Rectangle Rect,
+                                         [in] string Text,
+                                         [in] long Flags );
 
     /** draws text within a rectangle, with alignment and wrapping
         controlled by flags.

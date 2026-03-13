@@ -1,0 +1,47 @@
+/* -*- Mode: C++; tab-width: 4; indent-tabs-mode: nil; c-basic-offset: 4 -*- */
+/*
+ * This file is part of the LibreOffice project.
+ *
+ * This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at http://mozilla.org/MPL/2.0/.
+ */
+
+#include <com/sun/star/awt/Rectangle.idl>
+
+module com { module sun { module star { module awt {
+
+/** describes metrics for text measured within a specific rectangle.
+
+    @since LibreOffice 26.8
+ */
+published struct TextLayoutMetrics
+{
+    /** the width of the used text rectangle, in pixels.
+     */
+    long Width;
+
+    /** the height of the used text rectangle, in pixels.
+     */
+    long Height;
+
+    /** the maximum line width among all laid-out lines, in pixels.
+     */
+    long MaxLineWidth;
+
+    /** the number of lines the text occupies.
+     */
+    unsigned short LineCount;
+
+    /** whether the text was truncated with an ellipsis.
+     */
+    boolean IsEllipsis;
+
+    /** the actual used text rectangle in device coordinates.
+     */
+    Rectangle UsedRect;
+};
+
+}; }; }; };
+
+/* vim:set shiftwidth=4 softtabstop=4 expandtab: */

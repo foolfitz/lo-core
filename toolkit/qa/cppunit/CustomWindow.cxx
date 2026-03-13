@@ -14,6 +14,7 @@
 #include <test/bootstrapfixture.hxx>
 
 #include <com/sun/star/awt/PaintEvent.hpp>
+#include <com/sun/star/awt/TextLayoutMetrics.hpp>
 #include <com/sun/star/awt/TextMetrics.hpp>
 #include <com/sun/star/awt/VclWindowPeerAttribute.hpp>
 #include <com/sun/star/awt/WindowAttribute.hpp>
@@ -31,8 +32,10 @@
 #include <com/sun/star/lang/XComponent.hpp>
 #include <com/sun/star/lang/XMultiServiceFactory.hpp>
 
+#include <toolkit/awt/vclxdevice.hxx>
 #include <vcl/scheduler.hxx>
 #include <vcl/svapp.hxx>
+#include <vcl/virdev.hxx>
 
 using namespace css;
 
@@ -131,11 +134,13 @@ class ToolkitCustomWindowTest : public test::BootstrapFixture
 public:
     CPPUNIT_TEST_SUITE(ToolkitCustomWindowTest);
     CPPUNIT_TEST(testCustomPaintWindowPaintNotifications);
+    CPPUNIT_TEST(testMeasureTextInRectOnVirtualDevice);
     CPPUNIT_TEST(testSplitterWindowBasicState);
     CPPUNIT_TEST(testTextMetricsLineCountType);
     CPPUNIT_TEST_SUITE_END();
 
     void testCustomPaintWindowPaintNotifications();
+    void testMeasureTextInRectOnVirtualDevice();
     void testSplitterWindowBasicState();
     void testTextMetricsLineCountType();
 };
@@ -173,6 +178,34 @@ void ToolkitCustomWindowTest::testCustomPaintWindowPaintNotifications()
     uno::Reference< lang::XComponent >( xParentPeer, uno::UNO_QUERY_THROW )->dispose();
 }
 
+void ToolkitCustomWindowTest::testMeasureTextInRectOnVirtualDevice()
+{
+    ScopedVclPtrInstance<VirtualDevice> xDevice;
+    xDevice->SetOutputSizePixel( Size( 200, 200 ) );
+
+    rtl::Reference< VCLXDevice > xDeviceWrapper = new VCLXDevice;
+    xDeviceWrapper->SetOutputDevice( xDevice );
+
+    uno::Reference< awt::XGraphics3 > xGraphics(
+        xDeviceWrapper->createGraphics(), uno::UNO_QUERY_THROW );
+    CPPUNIT_ASSERT( xGraphics.is() );
+
+    awt::Rectangle aRect;
+    aRect.Width = 40;
+    aRect.Height = 200;
+
+    awt::TextMetrics aMetrics = xGraphics->measureText( u"LibreOffice toolkit test"_ustr, 40 );
+    awt::TextLayoutMetrics aLayoutMetrics = xGraphics->measureTextInRect(
+        aRect, u"LibreOffice toolkit test"_ustr, 0x1000 | 0x2000 );
+
+    CPPUNIT_ASSERT( aLayoutMetrics.Height > 0 );
+    CPPUNIT_ASSERT( aLayoutMetrics.LineCount > 1 );
+    CPPUNIT_ASSERT_EQUAL( aLayoutMetrics.Width, aLayoutMetrics.UsedRect.Width );
+    CPPUNIT_ASSERT_EQUAL( aLayoutMetrics.Height, aLayoutMetrics.UsedRect.Height );
+    CPPUNIT_ASSERT_EQUAL( aMetrics.LineCount, aLayoutMetrics.LineCount );
+    CPPUNIT_ASSERT_EQUAL( aMetrics.MaxLineWidth, aLayoutMetrics.MaxLineWidth );
+}
+
 void ToolkitCustomWindowTest::testSplitterWindowBasicState()
 {
     uno::Reference< awt::XWindowPeer > xParentPeer
@@ -206,10 +239,15 @@ void ToolkitCustomWindowTest::testSplitterWindowBasicState()
 void ToolkitCustomWindowTest::testTextMetricsLineCountType()
 {
     static_assert( std::is_same_v< decltype( awt::TextMetrics{}.LineCount ), sal_uInt16 > );
+    static_assert( std::is_same_v< decltype( awt::TextLayoutMetrics{}.LineCount ), sal_uInt16 > );
 
     awt::TextMetrics aMetrics;
     aMetrics.LineCount = 40000;
     CPPUNIT_ASSERT_EQUAL( sal_uInt16( 40000 ), aMetrics.LineCount );
+
+    awt::TextLayoutMetrics aLayoutMetrics;
+    aLayoutMetrics.LineCount = 40000;
+    CPPUNIT_ASSERT_EQUAL( sal_uInt16( 40000 ), aLayoutMetrics.LineCount );
 }
 
 CPPUNIT_TEST_SUITE_REGISTRATION(ToolkitCustomWindowTest);

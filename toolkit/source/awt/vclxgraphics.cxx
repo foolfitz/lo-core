@@ -31,6 +31,7 @@
 #include <vcl/metric.hxx>
 #include <vcl/textrectinfo.hxx>
 #include <vcl/unohelp.hxx>
+#include <com/sun/star/awt/TextLayoutMetrics.hpp>
 #include <com/sun/star/awt/TextMetrics.hpp>
 #include <tools/debug.hxx>
 
@@ -531,6 +532,32 @@ css::awt::TextMetrics VCLXGraphics::measureText( const OUString& rText, sal_Int3
         aMetrics.MaxLineWidth = aInfo.GetMaxLineWidth();
         aMetrics.LineCount = aInfo.GetLineCount();
         aMetrics.IsEllipsis = aInfo.IsEllipses();
+    }
+    return aMetrics;
+}
+
+css::awt::TextLayoutMetrics VCLXGraphics::measureTextInRect( const css::awt::Rectangle& aRect,
+                                                             const OUString& rText,
+                                                             sal_Int32 nFlags )
+{
+    SolarMutexGuard aGuard;
+    css::awt::TextLayoutMetrics aMetrics{};
+
+    if( mpOutputDevice )
+    {
+        InitOutputDevice( InitOutDevFlags::FONT );
+
+        TextRectInfo aInfo;
+        tools::Rectangle aResult = mpOutputDevice->GetTextRect(
+            vcl::unohelper::ConvertToVCLRect( aRect ), rText,
+            static_cast<DrawTextFlags>(nFlags), &aInfo );
+
+        aMetrics.Width = aResult.GetWidth();
+        aMetrics.Height = aResult.GetHeight();
+        aMetrics.MaxLineWidth = aInfo.GetMaxLineWidth();
+        aMetrics.LineCount = aInfo.GetLineCount();
+        aMetrics.IsEllipsis = aInfo.IsEllipses();
+        aMetrics.UsedRect = vcl::unohelper::ConvertToAWTRect( aResult );
     }
     return aMetrics;
 }
