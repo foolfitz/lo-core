@@ -39,15 +39,16 @@ published interface XSplitterWindow : com::sun::star::uno::XInterface
     /** sets the orientation.
 
         @param bHorizontal
-            TRUE for a horizontal splitter (dragged up/down),
-            FALSE for a vertical splitter (dragged left/right).
+            TRUE for a splitter whose position moves along the X axis
+            (dragged left/right), FALSE for one whose position moves
+            along the Y axis (dragged up/down).
      */
     void setHorizontal( [in] boolean bHorizontal );
 
-    /** returns TRUE if the splitter is horizontal. */
+    /** returns TRUE if the splitter moves along the X axis. */
     boolean getHorizontal();
 
-    /** sets the minimum and maximum draggable range.
+    /** sets the minimum and maximum draggable range along the drag axis.
 
         @param nMin minimum position in pixels
         @param nMax maximum position in pixels

@@ -26,6 +26,7 @@ namespace toolkit
         :maSplitListeners( *this )
         ,mnRangeMin( 0 )
         ,mnRangeMax( 0 )
+        ,mbHasRange( false )
     {
     }
 
@@ -91,7 +92,10 @@ namespace toolkit
         SolarMutexGuard aGuard;
         VclPtr< Splitter > pSplitter = GetAs< Splitter >();
         if ( pSplitter )
+        {
             pSplitter->SetHorizontal( bHorizontal );
+            ApplyRange( pSplitter );
+        }
     }
 
 
@@ -108,25 +112,39 @@ namespace toolkit
         SolarMutexGuard aGuard;
         mnRangeMin = nMin;
         mnRangeMax = nMax;
+        mbHasRange = true;
         VclPtr< Splitter > pSplitter = GetAs< Splitter >();
-        if ( pSplitter )
+        ApplyRange( pSplitter );
+    }
+
+
+    void VCLXSplitter::ApplyRange( Splitter* pSplitter ) const
+    {
+        if ( !mbHasRange || !pSplitter )
+            return;
+
+        vcl::Window* pParent = pSplitter->GetParent();
+        if ( !pParent )
+            return;
+
+        tools::Long nMin = mnRangeMin;
+        tools::Long nMax = mnRangeMax;
+        if ( nMax < nMin )
         {
-            vcl::Window* pParent = pSplitter->GetParent();
-            if ( pParent )
-            {
-                Size aParentSize = pParent->GetOutputSizePixel();
-                tools::Rectangle aDragRect;
-                if ( pSplitter->IsHorizontal() )
-                    aDragRect = tools::Rectangle(
-                        Point( 0, nMin ),
-                        Size( aParentSize.Width(), nMax - nMin ) );
-                else
-                    aDragRect = tools::Rectangle(
-                        Point( nMin, 0 ),
-                        Size( nMax - nMin, aParentSize.Height() ) );
-                pSplitter->SetDragRectPixel( aDragRect, pParent );
-            }
+            tools::Long nTmp = nMin;
+            nMin = nMax;
+            nMax = nTmp;
         }
+
+        ::Size aParentSize = pParent->GetOutputSizePixel();
+        tools::Rectangle aDragRect;
+        if ( pSplitter->IsHorizontal() )
+            aDragRect = tools::Rectangle( ::Point( nMin, 0 ),
+                                          ::Size( nMax - nMin, aParentSize.Height() ) );
+        else
+            aDragRect = tools::Rectangle( ::Point( 0, nMin ),
+                                          ::Size( aParentSize.Width(), nMax - nMin ) );
+        pSplitter->SetDragRectPixel( aDragRect, pParent );
     }
 
 
@@ -152,6 +170,7 @@ namespace toolkit
             VclPtr< Splitter > pSplitter = GetAs< Splitter >();
             if ( pSplitter )
             {
+                ApplyRange( pSplitter );
                 pSplitter->SetStartSplitHdl( LINK( this, VCLXSplitter, StartSplitHdl ) );
                 pSplitter->SetSplitHdl( LINK( this, VCLXSplitter, SplitHdl ) );
                 pSplitter->SetEndSplitHdl( LINK( this, VCLXSplitter, EndSplitHdl ) );
@@ -160,12 +179,32 @@ namespace toolkit
     }
 
 
+    void VCLXSplitter::ProcessWindowEvent( const VclWindowEvent& rVclWindowEvent )
+    {
+        switch ( rVclWindowEvent.GetId() )
+        {
+            case VclEventId::WindowResize:
+            case VclEventId::WindowShow:
+            {
+                SolarMutexGuard aGuard;
+                ApplyRange( GetAs< Splitter >() );
+                VCLXWindow::ProcessWindowEvent( rVclWindowEvent );
+                break;
+            }
+            default:
+                VCLXWindow::ProcessWindowEvent( rVclWindowEvent );
+                break;
+        }
+    }
+
+
     IMPL_LINK_NOARG( VCLXSplitter, StartSplitHdl, Splitter*, void )
     {
         if ( maSplitListeners.getLength() )
         {
+            css::uno::Reference< css::uno::XInterface > xKeepAlive( getXWeak() );
             SplitEvent aEvent;
-            aEvent.Source = static_cast< cppu::OWeakObject* >( this );
+            aEvent.Source = xKeepAlive;
             VclPtr< Splitter > pSplitter = GetAs< Splitter >();
             aEvent.SplitPos = pSplitter ? pSplitter->GetSplitPosPixel() : 0;
             maSplitListeners.splitStarted( aEvent );
@@ -177,8 +216,9 @@ namespace toolkit
     {
         if ( maSplitListeners.getLength() )
         {
+            css::uno::Reference< css::uno::XInterface > xKeepAlive( getXWeak() );
             SplitEvent aEvent;
-            aEvent.Source = static_cast< cppu::OWeakObject* >( this );
+            aEvent.Source = xKeepAlive;
             VclPtr< Splitter > pSplitter = GetAs< Splitter >();
             aEvent.SplitPos = pSplitter ? pSplitter->GetSplitPosPixel() : 0;
             maSplitListeners.splitting( aEvent );
@@ -190,8 +230,9 @@ namespace toolkit
     {
         if ( maSplitListeners.getLength() )
         {
+            css::uno::Reference< css::uno::XInterface > xKeepAlive( getXWeak() );
             SplitEvent aEvent;
-            aEvent.Source = static_cast< cppu::OWeakObject* >( this );
+            aEvent.Source = xKeepAlive;
             VclPtr< Splitter > pSplitter = GetAs< Splitter >();
             aEvent.SplitPos = pSplitter ? pSplitter->GetSplitPosPixel() : 0;
             maSplitListeners.splitEnded( aEvent );

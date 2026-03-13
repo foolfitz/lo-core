@@ -32,6 +32,9 @@ namespace toolkit
         SplitListenerMultiplexer maSplitListeners;
         tools::Long mnRangeMin;
         tools::Long mnRangeMax;
+        bool mbHasRange;
+
+        void ApplyRange( Splitter* pSplitter ) const;
 
     public:
         VCLXSplitter();
@@ -59,6 +62,7 @@ namespace toolkit
 
         // VCLXWindow
         void SetWindow( const VclPtr< vcl::Window > &pWindow ) override;
+        void ProcessWindowEvent( const VclWindowEvent& rVclWindowEvent ) override;
 
         DECL_LINK( StartSplitHdl, Splitter*, void );
         DECL_LINK( SplitHdl, Splitter*, void );

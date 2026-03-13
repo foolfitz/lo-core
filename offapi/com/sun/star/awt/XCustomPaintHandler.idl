@@ -8,7 +8,7 @@
  */
 
 #include <com/sun/star/uno/XInterface.idl>
-#include <com/sun/star/awt/XGraphics.idl>
+#include <com/sun/star/awt/XGraphics3.idl>
 #include <com/sun/star/awt/Rectangle.idl>
 
 module com {  module sun {  module star {  module awt {
@@ -29,12 +29,11 @@ published interface XCustomPaintHandler : com::sun::star::uno::XInterface
         Do not store a reference to it.</p>
 
         @param xGraphics
-            the graphics context to draw on; supports XGraphics3
-            methods (measureText, drawTextInRect, etc.)
+            the graphics context to draw on
         @param UpdateArea
             the rectangle that needs repainting, in content coordinates
      */
-    void paint( [in] com::sun::star::awt::XGraphics xGraphics,
+    void paint( [in] com::sun::star::awt::XGraphics3 xGraphics,
                 [in] com::sun::star::awt::Rectangle UpdateArea );
 };
 

@@ -31,7 +31,7 @@ published struct TextMetrics
 
     /** the number of lines the text would occupy.
      */
-    short LineCount;
+    unsigned short LineCount;
 
     /** whether the text was truncated with an ellipsis.
      */

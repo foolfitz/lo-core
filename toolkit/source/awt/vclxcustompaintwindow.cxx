@@ -10,6 +10,7 @@
 #include <awt/vclxcustompaintwindow.hxx>
 #include <awt/vclxgraphics.hxx>
 #include <com/sun/star/awt/Rectangle.hpp>
+#include <com/sun/star/awt/XGraphics3.hpp>
 
 #include <vcl/svapp.hxx>
 #include <vcl/outdev.hxx>
@@ -63,46 +64,47 @@ namespace toolkit
         vcl::RenderContext& rRenderContext,
         const tools::Rectangle& rRect )
     {
-        // Do NOT call base Window::Paint() — our handler IS the paint
-        // implementation. The base would fire WindowPaint event which
-        // we don't need.
-        if ( !mxHandler.is() )
-            return;
-
-        // Apply scroll offset via MapMode
-        rRenderContext.Push( vcl::PushFlags::MAPMODE );
-        MapMode aMapMode = rRenderContext.GetMapMode();
-        Point aOrigin = aMapMode.GetOrigin();
-        aMapMode.SetOrigin( Point(
-            aOrigin.X() - mnScrollOffsetX,
-            aOrigin.Y() - mnScrollOffsetY ) );
-        rRenderContext.SetMapMode( aMapMode );
-
-        // Create a temporary VCLXGraphics for the callback
-        rtl::Reference< VCLXGraphics > pGraphics = new VCLXGraphics;
-        pGraphics->Init( &rRenderContext );
-
-        // Convert rect to content coordinates (add scroll offset)
-        css::awt::Rectangle aUnoRect;
-        aUnoRect.X = rRect.Left() + mnScrollOffsetX;
-        aUnoRect.Y = rRect.Top() + mnScrollOffsetY;
-        aUnoRect.Width = rRect.GetWidth();
-        aUnoRect.Height = rRect.GetHeight();
-
-        try
+        if ( mxHandler.is() )
         {
-            mxHandler->paint( pGraphics, aUnoRect );
-        }
-        catch ( const css::uno::Exception& )
-        {
-            // Swallow exceptions from the handler to prevent
-            // crashing the VCL paint loop
+            // Apply scroll offset via MapMode
+            rRenderContext.Push( vcl::PushFlags::MAPMODE );
+            MapMode aMapMode = rRenderContext.GetMapMode();
+            ::Point aOrigin = aMapMode.GetOrigin();
+            aMapMode.SetOrigin( ::Point(
+                aOrigin.X() - mnScrollOffsetX,
+                aOrigin.Y() - mnScrollOffsetY ) );
+            rRenderContext.SetMapMode( aMapMode );
+
+            // Create a temporary VCLXGraphics for the callback
+            rtl::Reference< VCLXGraphics > pGraphics = new VCLXGraphics;
+            pGraphics->Init( &rRenderContext );
+            css::uno::Reference< XGraphics3 > xGraphics( pGraphics.get() );
+
+            // Convert rect to content coordinates (add scroll offset)
+            css::awt::Rectangle aUnoRect;
+            aUnoRect.X = rRect.Left() + mnScrollOffsetX;
+            aUnoRect.Y = rRect.Top() + mnScrollOffsetY;
+            aUnoRect.Width = rRect.GetWidth();
+            aUnoRect.Height = rRect.GetHeight();
+
+            try
+            {
+                mxHandler->paint( xGraphics, aUnoRect );
+            }
+            catch ( const css::uno::Exception& )
+            {
+                // Swallow exceptions from the handler to prevent
+                // crashing the VCL paint loop
+            }
+
+            // Disconnect the graphics from the OutputDevice
+            pGraphics->SetOutputDevice( nullptr );
+
+            rRenderContext.Pop();
         }
 
-        // Disconnect the graphics from the OutputDevice
-        pGraphics->SetOutputDevice( nullptr );
-
-        rRenderContext.Pop();
+        // Preserve the usual VCL -> UNO paint listener notification path.
+        vcl::Window::Paint( rRenderContext, rRect );
     }
 
 
@@ -162,9 +164,9 @@ namespace toolkit
         {
             // Convert content coordinates to window coordinates
             tools::Rectangle aRect(
-                Point( Rect.X - pWin->GetScrollOffsetX(),
-                       Rect.Y - pWin->GetScrollOffsetY() ),
-                Size( Rect.Width, Rect.Height ) );
+                ::Point( Rect.X - pWin->GetScrollOffsetX(),
+                         Rect.Y - pWin->GetScrollOffsetY() ),
+                ::Size( Rect.Width, Rect.Height ) );
             pWin->Invalidate( aRect );
         }
     }
