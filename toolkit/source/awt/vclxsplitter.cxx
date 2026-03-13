@@ -13,6 +13,8 @@
 #include <vcl/split.hxx>
 #include <vcl/svapp.hxx>
 
+#include <utility>
+
 namespace toolkit
 {
 
@@ -130,11 +132,7 @@ namespace toolkit
         tools::Long nMin = mnRangeMin;
         tools::Long nMax = mnRangeMax;
         if ( nMax < nMin )
-        {
-            tools::Long nTmp = nMin;
-            nMin = nMax;
-            nMax = nTmp;
-        }
+            std::swap( nMin, nMax );
 
         ::Size aParentSize = pParent->GetOutputSizePixel();
         tools::Rectangle aDragRect;
@@ -185,12 +183,9 @@ namespace toolkit
         {
             case VclEventId::WindowResize:
             case VclEventId::WindowShow:
-            {
-                SolarMutexGuard aGuard;
                 ApplyRange( GetAs< Splitter >() );
                 VCLXWindow::ProcessWindowEvent( rVclWindowEvent );
                 break;
-            }
             default:
                 VCLXWindow::ProcessWindowEvent( rVclWindowEvent );
                 break;
