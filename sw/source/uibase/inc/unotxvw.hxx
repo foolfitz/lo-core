@@ -21,6 +21,8 @@
 
 #include <sfx2/sfxbasecontroller.hxx>
 #include <comphelper/interfacecontainer3.hxx>
+#include <com/sun/star/text/XDocumentOverlay.hpp>
+#include <com/sun/star/text/XOverlayPainter.hpp>
 #include <com/sun/star/text/XParagraphNavigator.hpp>
 #include <com/sun/star/text/XTextViewCursor.hpp>
 #include <com/sun/star/text/XTextViewCursorSupplier.hpp>
@@ -59,6 +61,7 @@ typedef cppu::ImplInheritanceHelper<
             css::view::XFormLayerAccess,
             css::text::XTextViewCursorSupplier,
             css::text::XParagraphNavigator,
+            css::text::XDocumentOverlay,
             css::text::XTextViewTextRangeSupplier,
             css::text::XRubySelection,
             css::view::XViewSettingsSupplier,
@@ -76,6 +79,17 @@ class SwXTextView final : public SwXTextView_Base
 
     rtl::Reference< SwXViewSettings >     mxViewSettings;
     rtl::Reference< SwXTextViewCursor >   mxTextViewCursor;
+
+    // XDocumentOverlay overlay registry
+    struct OverlayEntry
+    {
+        sal_Int32 nHandle;
+        sal_Int32 nLayer;
+        css::uno::Reference<css::text::XOverlayPainter> xPainter;
+        bool bVisible;
+    };
+    std::vector<OverlayEntry> m_aOverlays;
+    sal_Int32 m_nNextOverlayHandle = 1;
 
     SdrObject* GetControl(
         const css::uno::Reference< css::awt::XControlModel > & Model,
@@ -114,6 +128,15 @@ public:
     virtual sal_Bool SAL_CALL isVisible(sal_Int32 nIndex) override;
     virtual OUString SAL_CALL getParagraphText(sal_Int32 nIndex) override;
     virtual OUString SAL_CALL getParagraphStyleName(sal_Int32 nIndex) override;
+
+    // XDocumentOverlay
+    virtual sal_Int32 SAL_CALL addOverlay(
+        const css::uno::Reference<css::text::XOverlayPainter>& Painter,
+        sal_Int32 Layer) override;
+    virtual void SAL_CALL removeOverlay(sal_Int32 Handle) override;
+    virtual void SAL_CALL invalidateOverlay(const css::awt::Rectangle& Area) override;
+    virtual void SAL_CALL setOverlayVisible(sal_Int32 Handle, sal_Bool Visible) override;
+    virtual sal_Bool SAL_CALL isOverlayVisible(sal_Int32 Handle) override;
 
     // XTextViewTextRangeSupplier
     virtual css::uno::Reference<css::text::XTextRange>
@@ -159,6 +182,12 @@ public:
 
     SwView*                 GetView() {return m_pView;}
     void                    Invalidate();
+
+    // overlay paint helpers (called from SwEditWin::Paint)
+    bool                    HasOverlays() const;
+    void                    CallOverlayPainters(
+                                const css::uno::Reference<css::awt::XGraphics>& xGraphics,
+                                const css::awt::Rectangle& rVisibleArea);
 
     // temporary document used for PDF export of selections/multi-selections
     SfxObjectShellLock      BuildTmpSelectionDoc();

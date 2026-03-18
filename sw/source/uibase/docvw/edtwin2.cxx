@@ -67,6 +67,8 @@
 #include <names.hxx>
 #include <com/sun/star/style/XStyleFamiliesSupplier.hpp>
 #include <LibreOfficeKit/LibreOfficeKitEnums.h>
+#include <unotxvw.hxx>
+#include <sfx2/sfxbasecontroller.hxx>
 
 namespace {
 
@@ -770,6 +772,33 @@ void SwEditWin::Paint(vcl::RenderContext& rRenderContext, const tools::Rectangle
         {
             comphelper::LibreOfficeKit::setTiledPainting(bTiledPainting);
         }
+
+        // Extension overlay painting — after document content and internal
+        // overlays, but before setOutputToWindow(false) so we remain in
+        // screen-paint mode (overlays never appear in print output).
+        {
+            SwXTextView* pTextView = dynamic_cast<SwXTextView*>(
+                GetView().GetController().get());
+            if (pTextView && pTextView->HasOverlays())
+            {
+                rRenderContext.Push(vcl::PushFlags::ALL);
+                rRenderContext.SetMapMode(GetMapMode());
+
+                css::uno::Reference<css::awt::XGraphics> xGraphics
+                    = rRenderContext.CreateUnoGraphics();
+                if (xGraphics.is())
+                {
+                    const tools::Rectangle& rVisArea = GetView().GetVisArea();
+                    css::awt::Rectangle aVisArea(
+                        rVisArea.Left(), rVisArea.Top(),
+                        rVisArea.GetWidth(), rVisArea.GetHeight());
+                    pTextView->CallOverlayPainters(xGraphics, aVisArea);
+                }
+
+                rRenderContext.Pop();
+            }
+        }
+
         pWrtShell->setOutputToWindow(false);
     }
 }

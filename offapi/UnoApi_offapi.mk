@@ -3769,6 +3769,7 @@ $(eval $(call gb_UnoApi_add_idlfiles,offapi,com/sun/star/text,\
 	XDocumentIndex \
 	XDocumentIndexMark \
 	XDocumentIndexesSupplier \
+	XDocumentOverlay \
 	XEndnotesSettingsSupplier \
 	XEndnotesSupplier \
 	XFlatParagraph \
@@ -3786,6 +3787,7 @@ $(eval $(call gb_UnoApi_add_idlfiles,offapi,com/sun/star/text,\
 	XNumberingFormatter \
 	XNumberingRulesSupplier \
 	XNumberingTypeInfo \
+	XOverlayPainter \
 	XPageCursor \
 	XPagePrintable \
 	XParagraphAppend \

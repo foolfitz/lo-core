@@ -1,0 +1,74 @@
+/* -*- Mode: C++; tab-width: 4; indent-tabs-mode: nil; c-basic-offset: 4 -*- */
+/*
+ * This file is part of the LibreOffice project.
+ *
+ * This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at http://mozilla.org/MPL/2.0/.
+ *
+ * This file incorporates work covered by the following license notice:
+ *
+ *   Licensed to the Apache Software Foundation (ASF) under one or more
+ *   contributor license agreements. See the NOTICE file distributed
+ *   with this work for additional information regarding copyright
+ *   ownership. The ASF licenses this file to you under the Apache
+ *   License, Version 2.0 (the "License"); you may not use this file
+ *   except in compliance with the License. You may obtain a copy of
+ *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
+ */
+
+#ifndef com_sun_star_text_XOverlayPainter_idl
+#define com_sun_star_text_XOverlayPainter_idl
+
+#include <com/sun/star/uno/XInterface.idl>
+#include <com/sun/star/awt/XGraphics.idl>
+#include <com/sun/star/awt/Rectangle.idl>
+
+module com { module sun { module star { module text {
+
+/** callback interface for painting overlays on a text document view.
+
+    <p>Extensions implement this interface and register it via
+    XDocumentOverlay::addOverlay(). The view calls paintOverlay()
+    during every screen repaint, after document content and internal
+    overlays have been rendered.</p>
+
+    <p><strong>Threading:</strong> paintOverlay() is always called
+    under the SolarMutex. Implementations must not acquire additional
+    locks that could lead to deadlock, and should return as quickly as
+    possible to avoid blocking the UI repaint.</p>
+
+    <p><strong>Performance:</strong> This method is called on every
+    repaint cycle including during scrolling. Expensive computation
+    should be performed outside this callback and cached.</p>
+ */
+published interface XOverlayPainter : com::sun::star::uno::XInterface
+{
+    /** paints overlay content on the document view.
+
+        <p>The graphics context's coordinate system is document twips, with
+        the MapMode already configured to account for scrolling and zooming.
+        Coordinates from XParagraphNavigator::getParagraphBounds() can be
+        used directly.</p>
+
+        <p>The XGraphics reference is valid only for the duration of this
+        call. Implementations must not store it for later use.</p>
+
+        @param Graphics
+            the graphics context for drawing, with MapMode set to document
+            coordinate space (twips)
+
+        @param VisibleArea
+            the currently visible document area in twips; painters may use
+            this to skip drawing for off-screen content
+     */
+    void paintOverlay(
+        [in] com::sun::star::awt::XGraphics Graphics,
+        [in] com::sun::star::awt::Rectangle VisibleArea );
+};
+
+}; }; }; };
+
+#endif
+
+/* vim:set shiftwidth=4 softtabstop=4 expandtab: */

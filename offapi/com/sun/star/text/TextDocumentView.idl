@@ -43,6 +43,10 @@ published service TextDocumentView
      */
     [optional] interface com::sun::star::text::XParagraphNavigator;
 
+    /** This interface provides overlay painting on the document view.
+     */
+    [optional] interface com::sun::star::text::XDocumentOverlay;
+
 
     /** Gives access to the objects properties.
 

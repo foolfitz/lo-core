@@ -1,0 +1,125 @@
+/* -*- Mode: C++; tab-width: 4; indent-tabs-mode: nil; c-basic-offset: 4 -*- */
+/*
+ * This file is part of the LibreOffice project.
+ *
+ * This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at http://mozilla.org/MPL/2.0/.
+ *
+ * This file incorporates work covered by the following license notice:
+ *
+ *   Licensed to the Apache Software Foundation (ASF) under one or more
+ *   contributor license agreements. See the NOTICE file distributed
+ *   with this work for additional information regarding copyright
+ *   ownership. The ASF licenses this file to you under the Apache
+ *   License, Version 2.0 (the "License"); you may not use this file
+ *   except in compliance with the License. You may obtain a copy of
+ *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
+ */
+
+#ifndef com_sun_star_text_XDocumentOverlay_idl
+#define com_sun_star_text_XDocumentOverlay_idl
+
+#include <com/sun/star/uno/XInterface.idl>
+#include <com/sun/star/text/XOverlayPainter.idl>
+#include <com/sun/star/awt/Rectangle.idl>
+#include <com/sun/star/lang/IllegalArgumentException.idl>
+
+module com { module sun { module star { module text {
+
+/** provides overlay painting on a text document view.
+
+    <p>Extensions can register XOverlayPainter callbacks that are called
+    during every screen repaint, after document content has been rendered.
+    Overlays are drawn on top of all document content and internal overlays
+    (such as text selection highlighting).</p>
+
+    <p>Overlays do not modify document content and do not appear in print
+    output.</p>
+
+    <p>The overlay coordinate system is document twips, matching the
+    coordinates returned by XParagraphNavigator::getParagraphBounds().
+    Scrolling and zooming are handled automatically by the view's
+    MapMode.</p>
+
+    <p>All overlays are automatically removed when the view is disposed.</p>
+ */
+published interface XDocumentOverlay : com::sun::star::uno::XInterface
+{
+    /** registers an overlay painter.
+
+        <p>The painter's paintOverlay() method will be called during every
+        view repaint, after the document content has been rendered. Multiple
+        painters can be registered; they are called in the order of their
+        Layer value (lower values first), and in registration order within
+        the same layer.</p>
+
+        @param Painter
+            the overlay painter callback to register; must not be `NULL`
+
+        @param Layer
+            painting order hint; lower values paint first (closer to document
+            content), higher values paint last (closer to user). Typical
+            values: 0 for background highlights, 100 for foreground labels.
+
+        @returns
+            a handle that identifies this overlay for subsequent calls to
+            removeOverlay(), setOverlayVisible(), and isOverlayVisible()
+     */
+    long addOverlay(
+        [in] com::sun::star::text::XOverlayPainter Painter,
+        [in] long Layer );
+
+    /** removes a registered overlay.
+
+        <p>After removal, the painter will no longer be called during
+        repaint. The affected area is automatically invalidated.</p>
+
+        @throws com::sun::star::lang::IllegalArgumentException
+            if Handle does not refer to a registered overlay
+     */
+    void removeOverlay( [in] long Handle )
+        raises (com::sun::star::lang::IllegalArgumentException);
+
+    /** invalidates an overlay region to trigger repaint.
+
+        <p>Use this when overlay content has changed but the document
+        itself has not been modified.</p>
+
+        <p>If Area is an empty rectangle (all fields zero), the entire
+        visible area is invalidated.</p>
+
+        @param Area
+            the document-coordinate region to invalidate, in twips; or
+            an empty rectangle to invalidate the entire visible area
+     */
+    void invalidateOverlay(
+        [in] com::sun::star::awt::Rectangle Area );
+
+    /** sets whether a registered overlay is painted.
+
+        <p>When set to `FALSE`, the painter will not be called during
+        repaint. The affected area is automatically invalidated.</p>
+
+        @throws com::sun::star::lang::IllegalArgumentException
+            if Handle does not refer to a registered overlay
+     */
+    void setOverlayVisible(
+        [in] long Handle,
+        [in] boolean Visible )
+        raises (com::sun::star::lang::IllegalArgumentException);
+
+    /** returns whether the specified overlay is currently visible.
+
+        @throws com::sun::star::lang::IllegalArgumentException
+            if Handle does not refer to a registered overlay
+     */
+    boolean isOverlayVisible( [in] long Handle )
+        raises (com::sun::star::lang::IllegalArgumentException);
+};
+
+}; }; }; };
+
+#endif
+
+/* vim:set shiftwidth=4 softtabstop=4 expandtab: */

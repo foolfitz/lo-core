@@ -17,6 +17,7 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
+#include <algorithm>
 #include <memory>
 #include <vector>
 #include <viscrs.hxx>
@@ -248,6 +249,7 @@ void SwXTextView::Invalidate()
     }
 
     osl_atomic_decrement(&m_refCount);
+    m_aOverlays.clear();
     m_pView = nullptr;
 }
 
@@ -736,6 +738,129 @@ OUString SAL_CALL SwXTextView::getParagraphStyleName(sal_Int32 nIndex)
     SwStyleNameMapper::FillProgName(pTextNode->GetAnyFormatColl().GetName(), aStyleName,
                                     SwGetPoolIdFromName::TxtColl);
     return aStyleName.toString();
+}
+
+// XDocumentOverlay
+
+sal_Int32 SAL_CALL SwXTextView::addOverlay(
+    const uno::Reference<text::XOverlayPainter>& xPainter,
+    sal_Int32 nLayer)
+{
+    SolarMutexGuard aGuard;
+    if (!GetView())
+        throw uno::RuntimeException();
+    if (!xPainter.is())
+        throw lang::IllegalArgumentException(
+            u"Painter must not be null"_ustr, getXWeak(), 0);
+
+    sal_Int32 nHandle = m_nNextOverlayHandle++;
+    m_aOverlays.push_back({nHandle, nLayer, xPainter, true});
+
+    // Sort by layer, preserving registration order within the same layer
+    std::stable_sort(m_aOverlays.begin(), m_aOverlays.end(),
+        [](const OverlayEntry& a, const OverlayEntry& b) {
+            return a.nLayer < b.nLayer;
+        });
+
+    GetView()->GetEditWin().Invalidate();
+    return nHandle;
+}
+
+void SAL_CALL SwXTextView::removeOverlay(sal_Int32 nHandle)
+{
+    SolarMutexGuard aGuard;
+    if (!GetView())
+        throw uno::RuntimeException();
+
+    auto it = std::find_if(m_aOverlays.begin(), m_aOverlays.end(),
+        [nHandle](const OverlayEntry& e) { return e.nHandle == nHandle; });
+    if (it == m_aOverlays.end())
+        throw lang::IllegalArgumentException(
+            u"invalid overlay handle"_ustr, getXWeak(), 0);
+
+    m_aOverlays.erase(it);
+    GetView()->GetEditWin().Invalidate();
+}
+
+void SAL_CALL SwXTextView::invalidateOverlay(const awt::Rectangle& rArea)
+{
+    SolarMutexGuard aGuard;
+    if (!GetView())
+        throw uno::RuntimeException();
+
+    SwEditWin& rEditWin = GetView()->GetEditWin();
+    if (rArea.X == 0 && rArea.Y == 0 && rArea.Width == 0 && rArea.Height == 0)
+    {
+        rEditWin.Invalidate();
+    }
+    else
+    {
+        tools::Rectangle aLogicRect(rArea.X, rArea.Y, rArea.X + rArea.Width,
+                                     rArea.Y + rArea.Height);
+        tools::Rectangle aPixelRect = rEditWin.LogicToPixel(aLogicRect);
+        rEditWin.Invalidate(aPixelRect);
+    }
+}
+
+void SAL_CALL SwXTextView::setOverlayVisible(sal_Int32 nHandle, sal_Bool bVisible)
+{
+    SolarMutexGuard aGuard;
+    if (!GetView())
+        throw uno::RuntimeException();
+
+    auto it = std::find_if(m_aOverlays.begin(), m_aOverlays.end(),
+        [nHandle](const OverlayEntry& e) { return e.nHandle == nHandle; });
+    if (it == m_aOverlays.end())
+        throw lang::IllegalArgumentException(
+            u"invalid overlay handle"_ustr, getXWeak(), 0);
+
+    if (it->bVisible != bool(bVisible))
+    {
+        it->bVisible = bVisible;
+        GetView()->GetEditWin().Invalidate();
+    }
+}
+
+sal_Bool SAL_CALL SwXTextView::isOverlayVisible(sal_Int32 nHandle)
+{
+    SolarMutexGuard aGuard;
+    if (!GetView())
+        throw uno::RuntimeException();
+
+    auto it = std::find_if(m_aOverlays.begin(), m_aOverlays.end(),
+        [nHandle](const OverlayEntry& e) { return e.nHandle == nHandle; });
+    if (it == m_aOverlays.end())
+        throw lang::IllegalArgumentException(
+            u"invalid overlay handle"_ustr, getXWeak(), 0);
+
+    return it->bVisible;
+}
+
+bool SwXTextView::HasOverlays() const
+{
+    return !m_aOverlays.empty();
+}
+
+void SwXTextView::CallOverlayPainters(
+    const uno::Reference<awt::XGraphics>& xGraphics,
+    const awt::Rectangle& rVisibleArea)
+{
+    // m_aOverlays is already sorted by layer
+    for (const auto& rEntry : m_aOverlays)
+    {
+        if (!rEntry.bVisible)
+            continue;
+        try
+        {
+            rEntry.xPainter->paintOverlay(xGraphics, rVisibleArea);
+        }
+        catch (const uno::Exception&)
+        {
+            // Swallow exceptions from extension callbacks to prevent
+            // crashing the VCL paint loop.
+            SAL_WARN("sw.uno", "XOverlayPainter::paintOverlay() threw an exception");
+        }
+    }
 }
 
 uno::Reference<text::XTextRange>
