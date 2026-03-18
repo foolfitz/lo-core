@@ -42,6 +42,11 @@ module com { module sun { module star { module text {
     Scrolling and zooming are handled automatically by the view's
     MapMode.</p>
 
+    <p>The handle returned by addOverlay() is an opaque identifier.
+    It is unique only within the lifetime of the current view, must not
+    be used with another view, and becomes invalid after removeOverlay()
+    or when the view is disposed.</p>
+
     <p>All overlays are automatically removed when the view is disposed.</p>
  */
 published interface XDocumentOverlay : com::sun::star::uno::XInterface
@@ -64,7 +69,9 @@ published interface XDocumentOverlay : com::sun::star::uno::XInterface
 
         @returns
             a handle that identifies this overlay for subsequent calls to
-            removeOverlay(), setOverlayVisible(), and isOverlayVisible()
+            removeOverlay(), setOverlayVisible(), and isOverlayVisible().
+            The handle is opaque, view-local, and becomes invalid after
+            removeOverlay() or when the view is disposed.
      */
     long addOverlay(
         [in] com::sun::star::text::XOverlayPainter Painter,

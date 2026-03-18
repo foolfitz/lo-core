@@ -28,7 +28,10 @@
 #include <com/sun/star/beans/PropertyAttribute.hpp>
 #include <com/sun/star/view/XViewSettingsSupplier.hpp>
 
+#include <toolkit/helper/vclunohelper.hxx>
 #include <vcl/scheduler.hxx>
+#include <vcl/mapmod.hxx>
+#include <vcl/outdev.hxx>
 #include <tools/json_writer.hxx>
 #include <comphelper/propertyvalue.hxx>
 #include <cppuhelper/implbase.hxx>
@@ -68,7 +71,10 @@ class MockOverlayPainter : public cppu::WeakImplHelper<css::text::XOverlayPainte
 public:
     sal_Int32 m_nPaintCount = 0;
     bool m_bReceivedGraphics = false;
+    bool m_bCapturedMapMode = false;
     css::awt::Rectangle m_aLastVisibleArea{};
+    MapMode m_aLastMapMode;
+    OutDevType m_eLastOutDevType = OUTDEV_WINDOW;
     sal_Int32 m_nId = 0;
     static std::vector<sal_Int32>* s_pGlobalOrder;
 
@@ -83,11 +89,48 @@ public:
         ++m_nPaintCount;
         m_bReceivedGraphics = xGraphics.is();
         m_aLastVisibleArea = rVisibleArea;
+        if (OutputDevice* pOutDev = VCLUnoHelper::GetOutputDevice(xGraphics))
+        {
+            m_bCapturedMapMode = true;
+            m_aLastMapMode = pOutDev->GetMapMode();
+            m_eLastOutDevType = pOutDev->GetOutDevType();
+        }
         if (s_pGlobalOrder)
             s_pGlobalOrder->push_back(m_nId);
     }
 };
 std::vector<sal_Int32>* MockOverlayPainter::s_pGlobalOrder = nullptr;
+
+class ReentrantOverlayPainter : public cppu::WeakImplHelper<css::text::XOverlayPainter>
+{
+public:
+    css::uno::Reference<css::text::XDocumentOverlay> m_xOverlay;
+    css::uno::Reference<css::text::XOverlayPainter> m_xPainterToAdd;
+    sal_Int32 m_nRemoveHandle = 0;
+    sal_Int32 m_nAddedHandle = 0;
+    sal_Int32 m_nPaintCount = 0;
+    bool m_bDidReenter = false;
+
+    explicit ReentrantOverlayPainter(
+        const css::uno::Reference<css::text::XDocumentOverlay>& xOverlay)
+        : m_xOverlay(xOverlay)
+    {
+    }
+
+    void SAL_CALL paintOverlay(const css::uno::Reference<css::awt::XGraphics>&,
+                               const css::awt::Rectangle&) override
+    {
+        ++m_nPaintCount;
+        if (m_bDidReenter)
+            return;
+
+        m_bDidReenter = true;
+        if (m_nRemoveHandle > 0)
+            m_xOverlay->removeOverlay(m_nRemoveHandle);
+        if (m_xPainterToAdd.is())
+            m_nAddedHandle = m_xOverlay->addOverlay(m_xPainterToAdd, 0);
+    }
+};
 
 uno::Reference<text::XTextViewCursor>
 lcl_GetViewCursor(const uno::Reference<frame::XModel>& xModel)
@@ -1004,61 +1047,35 @@ CPPUNIT_TEST_FIXTURE(SwUibaseUnoTest, testRedlineRenderModePartInfo)
 
 // XDocumentOverlay tests
 
-CPPUNIT_TEST_FIXTURE(SwUibaseUnoTest, testDocumentOverlayQueryInterface)
+CPPUNIT_TEST_FIXTURE(SwUibaseUnoTest, testDocumentOverlayBasicLifecycle)
 {
     createSwDoc();
     uno::Reference<frame::XModel> xModel(mxComponent, uno::UNO_QUERY_THROW);
     uno::Reference<text::XDocumentOverlay> xOverlay = lcl_GetDocumentOverlay(xModel);
     CPPUNIT_ASSERT(xOverlay.is());
-}
 
-CPPUNIT_TEST_FIXTURE(SwUibaseUnoTest, testDocumentOverlayAddRemove)
-{
-    createSwDoc();
-    uno::Reference<frame::XModel> xModel(mxComponent, uno::UNO_QUERY_THROW);
-    uno::Reference<text::XDocumentOverlay> xOverlay = lcl_GetDocumentOverlay(xModel);
-
+    // add / remove
     rtl::Reference<MockOverlayPainter> xPainter(new MockOverlayPainter);
     sal_Int32 nHandle = xOverlay->addOverlay(xPainter, 0);
     CPPUNIT_ASSERT(nHandle > 0);
 
-    // remove should not throw
-    xOverlay->removeOverlay(nHandle);
-
-    // double remove should throw
-    CPPUNIT_ASSERT_THROW(xOverlay->removeOverlay(nHandle),
-                         lang::IllegalArgumentException);
-}
-
-CPPUNIT_TEST_FIXTURE(SwUibaseUnoTest, testDocumentOverlayVisibility)
-{
-    createSwDoc();
-    uno::Reference<frame::XModel> xModel(mxComponent, uno::UNO_QUERY_THROW);
-    uno::Reference<text::XDocumentOverlay> xOverlay = lcl_GetDocumentOverlay(xModel);
-
-    rtl::Reference<MockOverlayPainter> xPainter(new MockOverlayPainter);
-    sal_Int32 nHandle = xOverlay->addOverlay(xPainter, 0);
-
-    // default visible
+    // visibility toggle
     CPPUNIT_ASSERT(xOverlay->isOverlayVisible(nHandle));
-
-    // set invisible
     xOverlay->setOverlayVisible(nHandle, false);
     CPPUNIT_ASSERT(!xOverlay->isOverlayVisible(nHandle));
-
-    // set visible again
     xOverlay->setOverlayVisible(nHandle, true);
     CPPUNIT_ASSERT(xOverlay->isOverlayVisible(nHandle));
 
+    // invalidateOverlay must not throw
+    xOverlay->invalidateOverlay(awt::Rectangle(0, 0, 0, 0));
+    xOverlay->invalidateOverlay(awt::Rectangle(100, 100, 500, 500));
+
+    // remove succeeds; double remove throws
     xOverlay->removeOverlay(nHandle);
-}
+    CPPUNIT_ASSERT_THROW(xOverlay->removeOverlay(nHandle),
+                         lang::IllegalArgumentException);
 
-CPPUNIT_TEST_FIXTURE(SwUibaseUnoTest, testDocumentOverlayInvalidHandle)
-{
-    createSwDoc();
-    uno::Reference<frame::XModel> xModel(mxComponent, uno::UNO_QUERY_THROW);
-    uno::Reference<text::XDocumentOverlay> xOverlay = lcl_GetDocumentOverlay(xModel);
-
+    // invalid handle throws
     CPPUNIT_ASSERT_THROW(xOverlay->removeOverlay(999),
                          lang::IllegalArgumentException);
     CPPUNIT_ASSERT_THROW(xOverlay->setOverlayVisible(999, false),
@@ -1067,19 +1084,7 @@ CPPUNIT_TEST_FIXTURE(SwUibaseUnoTest, testDocumentOverlayInvalidHandle)
                          lang::IllegalArgumentException);
 }
 
-CPPUNIT_TEST_FIXTURE(SwUibaseUnoTest, testDocumentOverlayInvalidateNoThrow)
-{
-    createSwDoc();
-    uno::Reference<frame::XModel> xModel(mxComponent, uno::UNO_QUERY_THROW);
-    uno::Reference<text::XDocumentOverlay> xOverlay = lcl_GetDocumentOverlay(xModel);
-
-    // empty rect (full invalidate) should not throw
-    xOverlay->invalidateOverlay(awt::Rectangle(0, 0, 0, 0));
-    // specific area should not throw
-    xOverlay->invalidateOverlay(awt::Rectangle(100, 100, 500, 500));
-}
-
-CPPUNIT_TEST_FIXTURE(SwUibaseUnoTest, testDocumentOverlayCallbackCalled)
+CPPUNIT_TEST_FIXTURE(SwUibaseUnoTest, testDocumentOverlayPaintCallback)
 {
     createSwDoc();
     uno::Reference<frame::XModel> xModel(mxComponent, uno::UNO_QUERY_THROW);
@@ -1088,15 +1093,21 @@ CPPUNIT_TEST_FIXTURE(SwUibaseUnoTest, testDocumentOverlayCallbackCalled)
     rtl::Reference<MockOverlayPainter> xPainter(new MockOverlayPainter);
     sal_Int32 nHandle = xOverlay->addOverlay(xPainter, 0);
 
-    // Trigger repaint
     SwEditWin& rEditWin = getSwDocShell()->GetView()->GetEditWin();
     rEditWin.Invalidate();
     rEditWin.PaintImmediately();
 
+    // callback was invoked with valid XGraphics and non-empty VisibleArea
     CPPUNIT_ASSERT(xPainter->m_nPaintCount >= 1);
     CPPUNIT_ASSERT(xPainter->m_bReceivedGraphics);
     CPPUNIT_ASSERT(xPainter->m_aLastVisibleArea.Width > 0);
     CPPUNIT_ASSERT(xPainter->m_aLastVisibleArea.Height > 0);
+
+    // MapMode is document twips matching getPrePostMapMode()
+    CPPUNIT_ASSERT(xPainter->m_bCapturedMapMode);
+    CPPUNIT_ASSERT_EQUAL(MapUnit::MapTwip, xPainter->m_aLastMapMode.GetMapUnit());
+    const MapMode& rExpectedMapMode = getSwDocShell()->GetWrtShell()->getPrePostMapMode();
+    CPPUNIT_ASSERT(rExpectedMapMode == xPainter->m_aLastMapMode);
 
     xOverlay->removeOverlay(nHandle);
 }
@@ -1143,16 +1154,45 @@ CPPUNIT_TEST_FIXTURE(SwUibaseUnoTest, testDocumentOverlayPaintOrder)
 
     MockOverlayPainter::s_pGlobalOrder = nullptr;
 
-    // Painter 1 (layer 0) should be called before painter 2 (layer 100)
-    CPPUNIT_ASSERT(aOrder.size() >= 2);
-    auto it1 = std::find(aOrder.begin(), aOrder.end(), 1);
-    auto it2 = std::find(aOrder.begin(), aOrder.end(), 2);
-    CPPUNIT_ASSERT(it1 != aOrder.end());
-    CPPUNIT_ASSERT(it2 != aOrder.end());
-    CPPUNIT_ASSERT(it1 < it2);
+    // Layer 0 painter called before layer 100 painter
+    CPPUNIT_ASSERT_EQUAL(size_t(2), aOrder.size());
+    CPPUNIT_ASSERT_EQUAL(sal_Int32(1), aOrder[0]);
+    CPPUNIT_ASSERT_EQUAL(sal_Int32(2), aOrder[1]);
 
     xOverlay->removeOverlay(nHandle1);
     xOverlay->removeOverlay(nHandle2);
+}
+
+CPPUNIT_TEST_FIXTURE(SwUibaseUnoTest, testDocumentOverlayCallbackReentrancy)
+{
+    createSwDoc();
+    uno::Reference<frame::XModel> xModel(mxComponent, uno::UNO_QUERY_THROW);
+    uno::Reference<text::XDocumentOverlay> xOverlay = lcl_GetDocumentOverlay(xModel);
+
+    SwEditWin& rEditWin = getSwDocShell()->GetView()->GetEditWin();
+
+    rtl::Reference<MockOverlayPainter> xAddedPainter(new MockOverlayPainter);
+    rtl::Reference<ReentrantOverlayPainter> xReentrantPainter(
+        new ReentrantOverlayPainter(xOverlay));
+    xReentrantPainter->m_xPainterToAdd = xAddedPainter;
+
+    sal_Int32 nHandle = xOverlay->addOverlay(xReentrantPainter, 0);
+    xReentrantPainter->m_nRemoveHandle = nHandle;
+
+    rEditWin.Invalidate();
+    rEditWin.PaintImmediately();
+
+    const sal_Int32 nFirstPaintCount = xReentrantPainter->m_nPaintCount;
+    CPPUNIT_ASSERT(nFirstPaintCount >= 1);
+    CPPUNIT_ASSERT(xReentrantPainter->m_nAddedHandle > 0);
+
+    rEditWin.Invalidate();
+    rEditWin.PaintImmediately();
+
+    CPPUNIT_ASSERT_EQUAL(nFirstPaintCount, xReentrantPainter->m_nPaintCount);
+    CPPUNIT_ASSERT(xAddedPainter->m_nPaintCount >= 1);
+
+    xOverlay->removeOverlay(xReentrantPainter->m_nAddedHandle);
 }
 
 CPPUNIT_TEST_FIXTURE(SwUibaseUnoTest, testDocumentOverlayDisposeCleanup)

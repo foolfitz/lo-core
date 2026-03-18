@@ -54,6 +54,12 @@ published interface XOverlayPainter : com::sun::star::uno::XInterface
         <p>The XGraphics reference is valid only for the duration of this
         call. Implementations must not store it for later use.</p>
 
+        <p>Implementations must not call XDocumentOverlay::addOverlay(),
+        XDocumentOverlay::removeOverlay(), or
+        XDocumentOverlay::setOverlayVisible() on the same view from inside
+        this callback. Cache state changes and apply them after the callback
+        returns instead.</p>
+
         @param Graphics
             the graphics context for drawing, with MapMode set to document
             coordinate space (twips)

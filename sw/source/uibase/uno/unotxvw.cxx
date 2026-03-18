@@ -845,11 +845,26 @@ void SwXTextView::CallOverlayPainters(
     const uno::Reference<awt::XGraphics>& xGraphics,
     const awt::Rectangle& rVisibleArea)
 {
-    // m_aOverlays is already sorted by layer
+    // Called from SwEditWin::Paint() which already holds the SolarMutex.
+    // Take a snapshot so callback-time add/remove operations do not invalidate
+    // the iteration state of the live registry.
+    std::vector<OverlayEntry> aSnapshot;
+    aSnapshot.reserve(m_aOverlays.size());
     for (const auto& rEntry : m_aOverlays)
     {
-        if (!rEntry.bVisible)
+        if (rEntry.bVisible)
+            aSnapshot.push_back(rEntry);
+    }
+
+    for (const auto& rEntry : aSnapshot)
+    {
+        auto it = std::find_if(m_aOverlays.begin(), m_aOverlays.end(),
+                               [nHandle = rEntry.nHandle](const OverlayEntry& rLiveEntry) {
+                                   return rLiveEntry.nHandle == nHandle;
+                               });
+        if (it == m_aOverlays.end() || !it->bVisible)
             continue;
+
         try
         {
             rEntry.xPainter->paintOverlay(xGraphics, rVisibleArea);

@@ -30,6 +30,7 @@ $(eval $(call gb_CppunitTest_use_libraries,sw_uibase_uno, \
     svxcore \
     sw \
 	swqahelper \
+    tk \
     test \
     unotest \
     utl \

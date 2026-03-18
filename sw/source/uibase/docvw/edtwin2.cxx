@@ -779,10 +779,12 @@ void SwEditWin::Paint(vcl::RenderContext& rRenderContext, const tools::Rectangle
         {
             SwXTextView* pTextView = dynamic_cast<SwXTextView*>(
                 GetView().GetController().get());
-            if (pTextView && pTextView->HasOverlays())
+            if (pTextView && pTextView->HasOverlays()
+                && rRenderContext.GetOutDevType() != OUTDEV_PRINTER
+                && rRenderContext.GetOutDevType() != OUTDEV_PDF)
             {
-                rRenderContext.Push(vcl::PushFlags::ALL);
-                rRenderContext.SetMapMode(GetMapMode());
+                auto popIt = rRenderContext.ScopedPush(vcl::PushFlags::ALL);
+                rRenderContext.SetMapMode(pWrtShell->getPrePostMapMode());
 
                 css::uno::Reference<css::awt::XGraphics> xGraphics
                     = rRenderContext.CreateUnoGraphics();
@@ -794,8 +796,6 @@ void SwEditWin::Paint(vcl::RenderContext& rRenderContext, const tools::Rectangle
                         rVisArea.GetWidth(), rVisArea.GetHeight());
                     pTextView->CallOverlayPainters(xGraphics, aVisArea);
                 }
-
-                rRenderContext.Pop();
             }
         }
 
