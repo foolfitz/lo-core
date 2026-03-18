@@ -394,7 +394,7 @@ CPPUNIT_TEST_FIXTURE(SwUibaseUnoTest, testParagraphNavigatorInvalidIndex)
     uno::Reference<text::XParagraphNavigator> xParagraphNavigator = lcl_GetParagraphNavigator(xModel);
     const sal_Int32 nOutOfRange = xParagraphNavigator->getCount();
 
-    CPPUNIT_ASSERT_THROW(xParagraphNavigator->gotoIndex(-1, false), lang::IndexOutOfBoundsException);
+    // positive out-of-range
     CPPUNIT_ASSERT_THROW(xParagraphNavigator->gotoIndex(nOutOfRange, false),
                          lang::IndexOutOfBoundsException);
     CPPUNIT_ASSERT_THROW(xParagraphNavigator->getParagraphBounds(nOutOfRange),
@@ -406,6 +406,20 @@ CPPUNIT_TEST_FIXTURE(SwUibaseUnoTest, testParagraphNavigatorInvalidIndex)
     CPPUNIT_ASSERT_THROW(xParagraphNavigator->getParagraphText(nOutOfRange),
                          lang::IndexOutOfBoundsException);
     CPPUNIT_ASSERT_THROW(xParagraphNavigator->getParagraphStyleName(nOutOfRange),
+                         lang::IndexOutOfBoundsException);
+
+    // negative index
+    CPPUNIT_ASSERT_THROW(xParagraphNavigator->gotoIndex(-1, false),
+                         lang::IndexOutOfBoundsException);
+    CPPUNIT_ASSERT_THROW(xParagraphNavigator->getParagraphBounds(-1),
+                         lang::IndexOutOfBoundsException);
+    CPPUNIT_ASSERT_THROW(xParagraphNavigator->getParagraphViewBounds(-1),
+                         lang::IndexOutOfBoundsException);
+    CPPUNIT_ASSERT_THROW(xParagraphNavigator->isVisible(-1),
+                         lang::IndexOutOfBoundsException);
+    CPPUNIT_ASSERT_THROW(xParagraphNavigator->getParagraphText(-1),
+                         lang::IndexOutOfBoundsException);
+    CPPUNIT_ASSERT_THROW(xParagraphNavigator->getParagraphStyleName(-1),
                          lang::IndexOutOfBoundsException);
 }
 

@@ -196,12 +196,11 @@ void lcl_GotoParagraphNavigatorNode(SwWrtShell& rSh, const SwTextNode& rTextNode
     SwPaM aSelection(aTarget);
     if (bSelect)
     {
-        SwPaM* pShellCursor = rSh.GetCursor();
+        // EnterStdMode() above clears any existing selection, so the shell
+        // cursor is always a collapsed point here.  Use that point as the
+        // selection anchor (mark) and the target paragraph as the new point.
         aSelection.SetMark();
-        if (pShellCursor->HasMark())
-            *aSelection.GetMark() = *pShellCursor->GetMark();
-        else
-            *aSelection.GetMark() = *pShellCursor->GetPoint();
+        *aSelection.GetMark() = *rSh.GetCursor()->GetPoint();
     }
     else
     {

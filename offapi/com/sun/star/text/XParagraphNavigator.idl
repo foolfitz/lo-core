@@ -46,8 +46,9 @@ published interface XParagraphNavigator: com::sun::star::uno::XInterface
      */
     long getCount();
 
-    /** returns the current paragraph index, or `-1` if the view cursor is outside the
-        supported paragraph scope.
+    /** returns the zero-based current paragraph index, in the range
+        <code>0 .. getCount()-1</code>, or <code>-1</code> if the view cursor is outside
+        the supported paragraph scope.
      */
     long getCurrentIndex();
 
@@ -84,6 +85,9 @@ published interface XParagraphNavigator: com::sun::star::uno::XInterface
     boolean gotoPrevious( [in] boolean Select );
 
     /** selects the current paragraph using the view's normal selection behavior.
+
+        <p>If the current view cursor is outside the supported paragraph scope,
+        this method has no effect.</p>
      */
     void selectCurrentParagraph();
 
