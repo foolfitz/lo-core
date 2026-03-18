@@ -154,9 +154,6 @@ LibreOffice.VC.VC.opendb
 .qtc_clangd
 .cache
 
-# doxygen output
-/docs
-
 # make dump-deps output
 /lo.png
 
