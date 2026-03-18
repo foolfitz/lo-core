@@ -733,7 +733,10 @@ OUString SAL_CALL SwXTextView::getParagraphStyleName(sal_Int32 nIndex)
     if (!pTextNode)
         throw lang::IndexOutOfBoundsException(u"paragraph index out of range"_ustr, getXWeak());
 
-    return pTextNode->GetTextColl()->GetName().toString();
+    ProgName aStyleName;
+    SwStyleNameMapper::FillProgName(pTextNode->GetAnyFormatColl().GetName(), aStyleName,
+                                    SwGetPoolIdFromName::TxtColl);
+    return aStyleName.toString();
 }
 
 uno::Reference<text::XTextRange>

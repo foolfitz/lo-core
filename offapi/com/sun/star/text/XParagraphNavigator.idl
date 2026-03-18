@@ -31,10 +31,18 @@ module com { module sun { module star { module text {
     <p>The geometry returned by this interface is a snapshot of the current document
     layout. Callers must re-query after scrolling, zooming, editing, or other layout
     changes.</p>
+
+    <p>The supported paragraph scope is limited to the main body text of
+    <code>XTextDocument.getText()</code>, in paragraph model order. Paragraphs in tables,
+    text frames, headers, footers, footnotes, and other non-body text are outside the
+    supported scope.</p>
  */
 published interface XParagraphNavigator: com::sun::star::uno::XInterface
 {
     /** returns the number of supported paragraphs in the current view scope.
+
+        <p>The returned count follows the main body paragraph order of
+        <code>XTextDocument.getText()</code>.</p>
      */
     long getCount();
 
@@ -44,6 +52,10 @@ published interface XParagraphNavigator: com::sun::star::uno::XInterface
     long getCurrentIndex();
 
     /** moves the view cursor to the paragraph at `Index`.
+
+        <p>If <code>Select</code> is <code>TRUE</code>, the move uses the document view's
+        normal selection expansion behavior instead of defining a separate paragraph
+        selection model.</p>
 
         @throws com::sun::star::lang::IndexOutOfBoundsException
             if `Index` is outside the range `0 .. getCount()-1`
@@ -57,7 +69,8 @@ published interface XParagraphNavigator: com::sun::star::uno::XInterface
 
         @returns
             `TRUE` if the cursor moved to a supported next paragraph,
-            `FALSE` otherwise.
+            `FALSE` otherwise, including when the current view cursor is outside the
+            supported paragraph scope.
      */
     boolean gotoNext( [in] boolean Select );
 
@@ -65,7 +78,8 @@ published interface XParagraphNavigator: com::sun::star::uno::XInterface
 
         @returns
             `TRUE` if the cursor moved to a supported previous paragraph,
-            `FALSE` otherwise.
+            `FALSE` otherwise, including when the current view cursor is outside the
+            supported paragraph scope.
      */
     boolean gotoPrevious( [in] boolean Select );
 
@@ -77,7 +91,10 @@ published interface XParagraphNavigator: com::sun::star::uno::XInterface
 
         <p>The returned rectangles are in twips and use the document's logic coordinate
         space. A paragraph may return multiple rectangles if it spans multiple layout
-        fragments.</p>
+        fragments. When multiple rectangles are returned, they follow the current layout
+        fragment order. If a supported paragraph currently has no visible layout fragment,
+        for example because it is hidden or has no layout frame, an empty sequence is
+        returned.</p>
 
         @throws com::sun::star::lang::IndexOutOfBoundsException
             if `Index` is outside the range `0 .. getCount()-1`
@@ -89,7 +106,9 @@ published interface XParagraphNavigator: com::sun::star::uno::XInterface
     /** returns paragraph layout fragment rectangles in view coordinates.
 
         <p>The returned rectangles are in pixels and use the current document view's client
-        area as the origin.</p>
+        area as the origin. The fragment order matches <code>getParagraphBounds()</code>.
+        If a supported paragraph currently has no visible layout fragment, an empty
+        sequence is returned.</p>
 
         @throws com::sun::star::lang::IndexOutOfBoundsException
             if `Index` is outside the range `0 .. getCount()-1`
@@ -99,6 +118,9 @@ published interface XParagraphNavigator: com::sun::star::uno::XInterface
         raises (com::sun::star::lang::IndexOutOfBoundsException);
 
     /** returns whether any paragraph fragment overlaps the current visible area.
+
+        <p>If a supported paragraph currently has no visible layout fragment,
+        <code>FALSE</code> is returned.</p>
 
         @throws com::sun::star::lang::IndexOutOfBoundsException
             if `Index` is outside the range `0 .. getCount()-1`
@@ -114,7 +136,7 @@ published interface XParagraphNavigator: com::sun::star::uno::XInterface
     string getParagraphText( [in] long Index )
         raises (com::sun::star::lang::IndexOutOfBoundsException);
 
-    /** returns the paragraph style name.
+    /** returns the UNO programmatic paragraph style name.
 
         @throws com::sun::star::lang::IndexOutOfBoundsException
             if `Index` is outside the range `0 .. getCount()-1`

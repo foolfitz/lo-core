@@ -9,12 +9,15 @@
 
 #include <swmodeltestbase.hxx>
 
+#include <cstdlib>
+
 #include <boost/property_tree/json_parser.hpp>
 
 #include <com/sun/star/frame/XModel2.hpp>
 #include <com/sun/star/lang/IndexOutOfBoundsException.hpp>
 #include <com/sun/star/text/ControlCharacter.hpp>
 #include <com/sun/star/text/XParagraphNavigator.hpp>
+#include <com/sun/star/text/XTextContent.hpp>
 #include <com/sun/star/text/XTextTable.hpp>
 #include <com/sun/star/text/XTextViewCursorSupplier.hpp>
 #include <com/sun/star/text/XTextViewTextRangeSupplier.hpp>
@@ -38,6 +41,7 @@
 #include <anchoredobject.hxx>
 #include <frameformats.hxx>
 #include <fmtanchr.hxx>
+#include <unoprnms.hxx>
 #include <unotxdoc.hxx>
 
 namespace
@@ -76,6 +80,30 @@ OUString lcl_CreateLongParagraph()
         aBuffer.append(u"fragment "_ustr);
     }
     return aBuffer.makeStringAndClear();
+}
+
+void lcl_AssertViewRectMatchesDocRect(SwEditWin& rEditWin, const awt::Rectangle& rDocRect,
+                                      const awt::Rectangle& rViewRect)
+{
+    Point aTopLeft = rEditWin.LogicToPixel(Point(rDocRect.X, rDocRect.Y));
+    Size aPixelSize = rEditWin.LogicToPixel(Size(rDocRect.Width, rDocRect.Height));
+    CPPUNIT_ASSERT_EQUAL(static_cast<sal_Int32>(aTopLeft.getX()), rViewRect.X);
+    CPPUNIT_ASSERT_EQUAL(static_cast<sal_Int32>(aTopLeft.getY()), rViewRect.Y);
+    CPPUNIT_ASSERT(std::abs(static_cast<sal_Int32>(aPixelSize.Width()) - rViewRect.Width) <= 1);
+    CPPUNIT_ASSERT(std::abs(static_cast<sal_Int32>(aPixelSize.Height()) - rViewRect.Height) <= 1);
+}
+
+void lcl_AssertParagraphNavigatorOutOfScope(
+    const uno::Reference<text::XParagraphNavigator>& xParagraphNavigator,
+    const uno::Reference<text::XTextViewCursor>& xViewCursor,
+    const uno::Reference<text::XTextRange>& xRange)
+{
+    xViewCursor->gotoRange(xRange, false);
+    Scheduler::ProcessEventsToIdle();
+
+    CPPUNIT_ASSERT_EQUAL(static_cast<sal_Int32>(-1), xParagraphNavigator->getCurrentIndex());
+    CPPUNIT_ASSERT(!xParagraphNavigator->gotoNext(false));
+    CPPUNIT_ASSERT(!xParagraphNavigator->gotoPrevious(false));
 }
 
 }
@@ -256,6 +284,10 @@ CPPUNIT_TEST_FIXTURE(SwUibaseUnoTest, testParagraphNavigatorBasic)
     lcl_AppendParagraph(xBodyText, xCursor, u"alpha"_ustr);
     lcl_AppendParagraph(xBodyText, xCursor, u"beta"_ustr);
     lcl_AppendParagraph(xBodyText, xCursor, u"gamma"_ustr, false);
+    uno::Reference<text::XTextRange> xAlphaParagraph = getParagraph(1, u"alpha"_ustr);
+    uno::Reference<text::XTextRange> xBetaParagraph = getParagraph(2, u"beta"_ustr);
+    uno::Reference<beans::XPropertySet> xBetaProperties(xBetaParagraph, uno::UNO_QUERY_THROW);
+    xBetaProperties->setPropertyValue(UNO_NAME_PARA_STYLE_NAME, uno::Any(u"Heading 1"_ustr));
     Scheduler::ProcessEventsToIdle();
 
     uno::Reference<frame::XModel> xModel(mxComponent, uno::UNO_QUERY_THROW);
@@ -263,7 +295,8 @@ CPPUNIT_TEST_FIXTURE(SwUibaseUnoTest, testParagraphNavigatorBasic)
 
     CPPUNIT_ASSERT_EQUAL(static_cast<sal_Int32>(3), xParagraphNavigator->getCount());
     CPPUNIT_ASSERT_EQUAL(OUString(u"beta"_ustr), xParagraphNavigator->getParagraphText(1));
-    CPPUNIT_ASSERT(!xParagraphNavigator->getParagraphStyleName(1).isEmpty());
+    CPPUNIT_ASSERT_EQUAL(getProperty<OUString>(xBetaProperties, UNO_NAME_PARA_STYLE_NAME),
+                         xParagraphNavigator->getParagraphStyleName(1));
 
     xParagraphNavigator->gotoIndex(0, false);
     CPPUNIT_ASSERT_EQUAL(static_cast<sal_Int32>(0), xParagraphNavigator->getCurrentIndex());
@@ -273,10 +306,15 @@ CPPUNIT_TEST_FIXTURE(SwUibaseUnoTest, testParagraphNavigatorBasic)
     CPPUNIT_ASSERT_EQUAL(static_cast<sal_Int32>(1), xParagraphNavigator->getCurrentIndex());
 
     uno::Reference<text::XTextViewCursor> xViewCursor = lcl_GetViewCursor(xModel);
+    xViewCursor->gotoRange(xAlphaParagraph->getStart(), false);
+    CPPUNIT_ASSERT(xViewCursor->goRight(1, false));
+    xViewCursor->gotoRange(xBetaParagraph->getStart(), true);
+    OUString aExpectedExpandedSelection = xViewCursor->getString();
+
     xParagraphNavigator->gotoIndex(0, false);
     CPPUNIT_ASSERT(xViewCursor->goRight(1, false));
     CPPUNIT_ASSERT(xParagraphNavigator->gotoNext(true));
-    CPPUNIT_ASSERT(!xViewCursor->isCollapsed());
+    CPPUNIT_ASSERT_EQUAL(aExpectedExpandedSelection, xViewCursor->getString());
     CPPUNIT_ASSERT_EQUAL(static_cast<sal_Int32>(1), xParagraphNavigator->getCurrentIndex());
 
     xParagraphNavigator->gotoIndex(1, false);
@@ -297,11 +335,11 @@ CPPUNIT_TEST_FIXTURE(SwUibaseUnoTest, testParagraphNavigatorBasic)
     CPPUNIT_ASSERT(aViewBounds.getLength() > 0);
     CPPUNIT_ASSERT(aViewBounds[0].Width > 0);
     CPPUNIT_ASSERT(aViewBounds[0].Height > 0);
+    CPPUNIT_ASSERT_EQUAL(aDocBounds.getLength(), aViewBounds.getLength());
 
     SwEditWin& rEditWin = getSwDocShell()->GetView()->GetEditWin();
-    Point aExpectedTopLeft = rEditWin.LogicToPixel(Point(aDocBounds[0].X, aDocBounds[0].Y));
-    CPPUNIT_ASSERT_EQUAL(static_cast<sal_Int32>(aExpectedTopLeft.getX()), aViewBounds[0].X);
-    CPPUNIT_ASSERT_EQUAL(static_cast<sal_Int32>(aExpectedTopLeft.getY()), aViewBounds[0].Y);
+    for (sal_Int32 i = 0; i < aDocBounds.getLength(); ++i)
+        lcl_AssertViewRectMatchesDocRect(rEditWin, aDocBounds[i], aViewBounds[i]);
 
     CPPUNIT_ASSERT(xViewCursor->goRight(1, false));
     xParagraphNavigator->selectCurrentParagraph();
@@ -377,24 +415,51 @@ CPPUNIT_TEST_FIXTURE(SwUibaseUnoTest, testParagraphNavigatorCurrentIndexOutOfSco
 
     uno::Reference<text::XTextDocument> xTextDocument(mxComponent, uno::UNO_QUERY_THROW);
     uno::Reference<lang::XMultiServiceFactory> xFactory(mxComponent, uno::UNO_QUERY_THROW);
+    uno::Reference<container::XNameAccess> xPageStyles = getStyles(u"PageStyles"_ustr);
+    uno::Reference<beans::XPropertySet> xPageStyle(
+        xPageStyles->getByName(u"Standard"_ustr), uno::UNO_QUERY_THROW);
+    xPageStyle->setPropertyValue(u"HeaderIsOn"_ustr, uno::Any(true));
+    xPageStyle->setPropertyValue(u"FooterIsOn"_ustr, uno::Any(true));
+    uno::Reference<text::XText> xHeaderText(
+        xPageStyle->getPropertyValue(u"HeaderText"_ustr), uno::UNO_QUERY_THROW);
+    xHeaderText->setString(u"inside header"_ustr);
+    uno::Reference<text::XText> xFooterText(
+        xPageStyle->getPropertyValue(u"FooterText"_ustr), uno::UNO_QUERY_THROW);
+    xFooterText->setString(u"inside footer"_ustr);
+
     uno::Reference<text::XTextTable> xTable(
         xFactory->createInstance(u"com.sun.star.text.TextTable"_ustr), uno::UNO_QUERY_THROW);
     xTable->initialize(1, 1);
     uno::Reference<text::XText> xBodyText = xTextDocument->getText();
-    xBodyText->insertTextContent(xBodyText->createTextCursor(), xTable, /*bAbsorb=*/true);
+    uno::Reference<text::XTextCursor> xBodyCursor = xBodyText->createTextCursor();
+    lcl_AppendParagraph(xBodyText, xBodyCursor, u"alpha"_ustr, false);
+    xBodyText->insertTextContent(xBodyCursor, xTable, /*bAbsorb=*/false);
     uno::Reference<text::XText> xCellText(xTable->getCellByName(u"A1"_ustr), uno::UNO_QUERY_THROW);
     xCellText->setString(u"inside table"_ustr);
+
+    uno::Reference<text::XTextContent> xFootnote(
+        xFactory->createInstance(u"com.sun.star.text.Footnote"_ustr), uno::UNO_QUERY_THROW);
+    xBodyText->insertTextContent(xBodyCursor, xFootnote, /*bAbsorb=*/false);
+    uno::Reference<text::XText> xFootnoteText(xFootnote, uno::UNO_QUERY_THROW);
+    xFootnoteText->setString(u"inside footnote"_ustr);
+
+    uno::Reference<text::XTextContent> xTextFrame(
+        xFactory->createInstance(u"com.sun.star.text.TextFrame"_ustr), uno::UNO_QUERY_THROW);
+    xBodyText->insertTextContent(xBodyCursor, xTextFrame, /*bAbsorb=*/false);
+    uno::Reference<text::XText> xFrameText(xTextFrame, uno::UNO_QUERY_THROW);
+    xFrameText->setString(u"inside frame"_ustr);
     Scheduler::ProcessEventsToIdle();
 
     uno::Reference<frame::XModel> xModel(mxComponent, uno::UNO_QUERY_THROW);
     uno::Reference<text::XParagraphNavigator> xParagraphNavigator = lcl_GetParagraphNavigator(xModel);
     uno::Reference<text::XTextViewCursor> xViewCursor = lcl_GetViewCursor(xModel);
-    xViewCursor->gotoRange(xCellText->getStart(), false);
-    Scheduler::ProcessEventsToIdle();
 
-    CPPUNIT_ASSERT_EQUAL(static_cast<sal_Int32>(-1), xParagraphNavigator->getCurrentIndex());
-    CPPUNIT_ASSERT(!xParagraphNavigator->gotoNext(false));
-    CPPUNIT_ASSERT(!xParagraphNavigator->gotoPrevious(false));
+    lcl_AssertParagraphNavigatorOutOfScope(xParagraphNavigator, xViewCursor, xCellText->getStart());
+    lcl_AssertParagraphNavigatorOutOfScope(xParagraphNavigator, xViewCursor,
+                                           xFootnoteText->getStart());
+    lcl_AssertParagraphNavigatorOutOfScope(xParagraphNavigator, xViewCursor, xHeaderText->getStart());
+    lcl_AssertParagraphNavigatorOutOfScope(xParagraphNavigator, xViewCursor, xFooterText->getStart());
+    lcl_AssertParagraphNavigatorOutOfScope(xParagraphNavigator, xViewCursor, xFrameText->getStart());
 }
 
 CPPUNIT_TEST_FIXTURE(SwUibaseUnoTest, testParagraphNavigatorMultiFragment)
@@ -423,6 +488,10 @@ CPPUNIT_TEST_FIXTURE(SwUibaseUnoTest, testParagraphNavigatorMultiFragment)
     CPPUNIT_ASSERT_MESSAGE("expected paragraph to span multiple fragments",
                            aDocBounds.getLength() > 1);
     CPPUNIT_ASSERT_EQUAL(aDocBounds.getLength(), aViewBounds.getLength());
+
+    SwEditWin& rEditWin = getSwDocShell()->GetView()->GetEditWin();
+    for (sal_Int32 i = 0; i < aDocBounds.getLength(); ++i)
+        lcl_AssertViewRectMatchesDocRect(rEditWin, aDocBounds[i], aViewBounds[i]);
 }
 
 CPPUNIT_TEST_FIXTURE(SwUibaseUnoTest, testParagraphNavigatorHiddenParagraph)
@@ -430,6 +499,7 @@ CPPUNIT_TEST_FIXTURE(SwUibaseUnoTest, testParagraphNavigatorHiddenParagraph)
     createSwDoc();
 
     uno::Reference<text::XTextDocument> xTextDocument(mxComponent, uno::UNO_QUERY_THROW);
+    uno::Reference<lang::XMultiServiceFactory> xFactory(mxComponent, uno::UNO_QUERY_THROW);
     uno::Reference<text::XText> xBodyText = xTextDocument->getText();
     uno::Reference<text::XTextCursor> xCursor = xBodyText->createTextCursor();
     lcl_AppendParagraph(xBodyText, xCursor, u"alpha"_ustr);
@@ -439,15 +509,18 @@ CPPUNIT_TEST_FIXTURE(SwUibaseUnoTest, testParagraphNavigatorHiddenParagraph)
     uno::Reference<text::XTextRange> xHiddenParagraph = getParagraph(2, u"hidden beta"_ustr);
     uno::Reference<text::XTextCursor> xHiddenCursor(
         xBodyText->createTextCursorByRange(xHiddenParagraph->getStart()));
-    xHiddenCursor->gotoRange(xHiddenParagraph->getEnd(), true);
-    uno::Reference<beans::XPropertySet> xHiddenProps(xHiddenCursor, uno::UNO_QUERY_THROW);
-    xHiddenProps->setPropertyValue(u"CharHidden"_ustr, uno::Any(true));
+    uno::Reference<text::XTextContent> xHiddenField(
+        xFactory->createInstance(u"com.sun.star.text.TextField.HiddenParagraph"_ustr),
+        uno::UNO_QUERY_THROW);
+    uno::Reference<beans::XPropertySet> xHiddenProps(xHiddenField, uno::UNO_QUERY_THROW);
+    xHiddenProps->setPropertyValue(UNO_NAME_IS_HIDDEN, uno::Any(true));
+    xBodyText->insertTextContent(xHiddenCursor, xHiddenField, false);
 
     uno::Reference<frame::XModel> xModel(mxComponent, uno::UNO_QUERY_THROW);
     uno::Reference<view::XViewSettingsSupplier> xViewSettingsSupplier(
         xModel->getCurrentController(), uno::UNO_QUERY_THROW);
     uno::Reference<beans::XPropertySet> xViewSettings = xViewSettingsSupplier->getViewSettings();
-    xViewSettings->setPropertyValue(u"ShowHiddenCharacters"_ustr, uno::Any(false));
+    xViewSettings->setPropertyValue(UNO_NAME_SHOW_HIDDEN_PARAGRAPHS, uno::Any(false));
     Scheduler::ProcessEventsToIdle();
 
     uno::Reference<text::XParagraphNavigator> xParagraphNavigator = lcl_GetParagraphNavigator(xModel);
