@@ -18,6 +18,7 @@
  */
 
 #include <memory>
+#include <vector>
 #include <viscrs.hxx>
 #include <o3tl/any.hxx>
 #include <sfx2/printer.hxx>
@@ -56,6 +57,7 @@
 #include <SwStyleNameMapper.hxx>
 #include <com/sun/star/beans/PropertyAttribute.hpp>
 #include <com/sun/star/drawing/ShapeCollection.hpp>
+#include <com/sun/star/lang/IndexOutOfBoundsException.hpp>
 #include <editeng/outliner.hxx>
 #include <editeng/editview.hxx>
 #include <unoparagraph.hxx>
@@ -65,6 +67,7 @@
 #include <swdtflvr.hxx>
 #include <rootfrm.hxx>
 #include <edtwin.hxx>
+#include <txtfrm.hxx>
 #include <vcl/svapp.hxx>
 #include <comphelper/processfactory.hxx>
 #include <comphelper/profilezone.hxx>
@@ -85,6 +88,129 @@ using namespace ::com::sun::star::view;
 using namespace ::com::sun::star::frame;
 
 using ::com::sun::star::util::URL;
+
+namespace
+{
+bool lcl_IsParagraphNavigatorNode(const SwTextNode& rTextNode)
+{
+    return !rTextNode.FindTableNode()
+        && !rTextNode.FindFlyStartNode()
+        && !rTextNode.FindFootnoteStartNode()
+        && !rTextNode.FindHeaderStartNode()
+        && !rTextNode.FindFooterStartNode();
+}
+
+sal_Int32 lcl_GetParagraphNavigatorCount(const SwDoc& rDoc)
+{
+    sal_Int32 nCount = 0;
+    const SwNodes& rNodes = rDoc.GetNodes();
+    for (SwNodeOffset nNode = rNodes.GetEndOfExtras().GetIndex() + 1;
+         nNode < rNodes.GetEndOfContent().GetIndex(); ++nNode)
+    {
+        const SwTextNode* pTextNode = rNodes[nNode]->GetTextNode();
+        if (pTextNode && lcl_IsParagraphNavigatorNode(*pTextNode))
+            ++nCount;
+    }
+
+    return nCount;
+}
+
+const SwTextNode* lcl_GetParagraphNavigatorNodeByIndex(const SwDoc& rDoc, sal_Int32 nWantedIndex)
+{
+    if (nWantedIndex < 0)
+        return nullptr;
+
+    sal_Int32 nIndex = 0;
+    const SwNodes& rNodes = rDoc.GetNodes();
+    for (SwNodeOffset nNode = rNodes.GetEndOfExtras().GetIndex() + 1;
+         nNode < rNodes.GetEndOfContent().GetIndex(); ++nNode)
+    {
+        const SwTextNode* pTextNode = rNodes[nNode]->GetTextNode();
+        if (!pTextNode || !lcl_IsParagraphNavigatorNode(*pTextNode))
+            continue;
+
+        if (nIndex == nWantedIndex)
+            return pTextNode;
+
+        ++nIndex;
+    }
+
+    return nullptr;
+}
+
+sal_Int32 lcl_GetParagraphNavigatorIndexForNode(const SwDoc& rDoc, const SwTextNode* pWantedNode)
+{
+    if (!pWantedNode || !lcl_IsParagraphNavigatorNode(*pWantedNode))
+        return -1;
+
+    sal_Int32 nIndex = 0;
+    const SwNodes& rNodes = rDoc.GetNodes();
+    for (SwNodeOffset nNode = rNodes.GetEndOfExtras().GetIndex() + 1;
+         nNode < rNodes.GetEndOfContent().GetIndex(); ++nNode)
+    {
+        const SwTextNode* pTextNode = rNodes[nNode]->GetTextNode();
+        if (!pTextNode || !lcl_IsParagraphNavigatorNode(*pTextNode))
+            continue;
+
+        if (pTextNode == pWantedNode)
+            return nIndex;
+
+        ++nIndex;
+    }
+
+    return -1;
+}
+
+awt::Rectangle lcl_CreateUnoRect(const SwRect& rRect)
+{
+    return awt::Rectangle(rRect.Left(), rRect.Top(), rRect.Width(), rRect.Height());
+}
+
+awt::Rectangle lcl_CreateUnoRect(const tools::Rectangle& rRect)
+{
+    return awt::Rectangle(rRect.Left(), rRect.Top(), rRect.GetWidth(), rRect.GetHeight());
+}
+
+std::vector<SwRect> lcl_GetParagraphNavigatorFragments(const SwTextNode& rTextNode, const SwRootFrame* pLayout)
+{
+    std::vector<SwRect> aFragments;
+    if (!pLayout)
+        return aFragments;
+
+    const SwTextFrame* pFrame = static_cast<const SwTextFrame*>(rTextNode.getLayoutFrame(pLayout));
+    while (pFrame)
+    {
+        if (!pFrame->IsHiddenNow() && !pFrame->getFrameArea().IsEmpty())
+            aFragments.push_back(pFrame->getFrameArea());
+        pFrame = pFrame->GetFollow();
+    }
+
+    return aFragments;
+}
+
+void lcl_GotoParagraphNavigatorNode(SwWrtShell& rSh, const SwTextNode& rTextNode, bool bSelect)
+{
+    rSh.EnterStdMode();
+
+    SwPosition aTarget(rTextNode, 0);
+    SwPaM aSelection(aTarget);
+    if (bSelect)
+    {
+        SwPaM* pShellCursor = rSh.GetCursor();
+        aSelection.SetMark();
+        if (pShellCursor->HasMark())
+            *aSelection.GetMark() = *pShellCursor->GetMark();
+        else
+            *aSelection.GetMark() = *pShellCursor->GetPoint();
+    }
+    else
+    {
+        aSelection.DeleteMark();
+    }
+
+    rSh.SetSelection(aSelection);
+}
+}
 
 SwXTextView::SwXTextView(SwView* pSwView) :
     SwXTextView_Base(pSwView),
@@ -428,6 +554,186 @@ uno::Reference< text::XTextViewCursor >  SwXTextView::getViewCursor()
         mxTextViewCursor = new SwXTextViewCursor(GetView());
     }
     return mxTextViewCursor;
+}
+
+sal_Int32 SAL_CALL SwXTextView::getCount()
+{
+    SolarMutexGuard aGuard;
+    if (!GetView())
+        throw uno::RuntimeException();
+
+    return lcl_GetParagraphNavigatorCount(*GetView()->GetDocShell()->GetDoc());
+}
+
+sal_Int32 SAL_CALL SwXTextView::getCurrentIndex()
+{
+    SolarMutexGuard aGuard;
+    if (!GetView())
+        throw uno::RuntimeException();
+
+    const SwTextNode* pTextNode = GetView()->GetWrtShell().GetCursor()->GetPointNode().GetTextNode();
+    return lcl_GetParagraphNavigatorIndexForNode(*GetView()->GetDocShell()->GetDoc(), pTextNode);
+}
+
+void SAL_CALL SwXTextView::gotoIndex(sal_Int32 nIndex, sal_Bool bSelect)
+{
+    SolarMutexGuard aGuard;
+    if (!GetView())
+        throw uno::RuntimeException();
+
+    SwDoc* pDoc = GetView()->GetDocShell()->GetDoc();
+    const SwTextNode* pTextNode = lcl_GetParagraphNavigatorNodeByIndex(*pDoc, nIndex);
+    if (!pTextNode)
+        throw lang::IndexOutOfBoundsException(u"paragraph index out of range"_ustr, getXWeak());
+
+    lcl_GotoParagraphNavigatorNode(GetView()->GetWrtShell(), *pTextNode, bSelect);
+}
+
+sal_Bool SAL_CALL SwXTextView::gotoNext(sal_Bool bSelect)
+{
+    SolarMutexGuard aGuard;
+    if (!GetView())
+        throw uno::RuntimeException();
+
+    const sal_Int32 nCurrent = lcl_GetParagraphNavigatorIndexForNode(
+        *GetView()->GetDocShell()->GetDoc(),
+        GetView()->GetWrtShell().GetCursor()->GetPointNode().GetTextNode());
+    if (nCurrent < 0)
+        return false;
+
+    const sal_Int32 nNext = nCurrent + 1;
+    const SwTextNode* pNextNode
+        = lcl_GetParagraphNavigatorNodeByIndex(*GetView()->GetDocShell()->GetDoc(), nNext);
+    if (!pNextNode)
+        return false;
+
+    lcl_GotoParagraphNavigatorNode(GetView()->GetWrtShell(), *pNextNode, bSelect);
+    return true;
+}
+
+sal_Bool SAL_CALL SwXTextView::gotoPrevious(sal_Bool bSelect)
+{
+    SolarMutexGuard aGuard;
+    if (!GetView())
+        throw uno::RuntimeException();
+
+    const sal_Int32 nCurrent = lcl_GetParagraphNavigatorIndexForNode(
+        *GetView()->GetDocShell()->GetDoc(),
+        GetView()->GetWrtShell().GetCursor()->GetPointNode().GetTextNode());
+    if (nCurrent <= 0)
+        return false;
+
+    const SwTextNode* pPreviousNode
+        = lcl_GetParagraphNavigatorNodeByIndex(*GetView()->GetDocShell()->GetDoc(), nCurrent - 1);
+    if (!pPreviousNode)
+        return false;
+
+    lcl_GotoParagraphNavigatorNode(GetView()->GetWrtShell(), *pPreviousNode, bSelect);
+    return true;
+}
+
+void SAL_CALL SwXTextView::selectCurrentParagraph()
+{
+    SolarMutexGuard aGuard;
+    if (!GetView())
+        throw uno::RuntimeException();
+
+    const SwTextNode* pTextNode = GetView()->GetWrtShell().GetCursor()->GetPointNode().GetTextNode();
+    if (lcl_GetParagraphNavigatorIndexForNode(*GetView()->GetDocShell()->GetDoc(), pTextNode) < 0)
+        return;
+
+    SwWrtShell& rSh = GetView()->GetWrtShell();
+    rSh.EnterStdMode();
+    rSh.SelPara(nullptr);
+}
+
+uno::Sequence<awt::Rectangle> SAL_CALL SwXTextView::getParagraphBounds(sal_Int32 nIndex)
+{
+    SolarMutexGuard aGuard;
+    if (!GetView())
+        throw uno::RuntimeException();
+
+    const SwTextNode* pTextNode
+        = lcl_GetParagraphNavigatorNodeByIndex(*GetView()->GetDocShell()->GetDoc(), nIndex);
+    if (!pTextNode)
+        throw lang::IndexOutOfBoundsException(u"paragraph index out of range"_ustr, getXWeak());
+
+    const auto aFragments = lcl_GetParagraphNavigatorFragments(*pTextNode, GetView()->GetWrtShell().GetLayout());
+    uno::Sequence<awt::Rectangle> aRet(aFragments.size());
+    for (size_t i = 0; i < aFragments.size(); ++i)
+        aRet.getArray()[i] = lcl_CreateUnoRect(aFragments[i]);
+
+    return aRet;
+}
+
+uno::Sequence<awt::Rectangle> SAL_CALL SwXTextView::getParagraphViewBounds(sal_Int32 nIndex)
+{
+    SolarMutexGuard aGuard;
+    if (!GetView())
+        throw uno::RuntimeException();
+
+    const SwTextNode* pTextNode
+        = lcl_GetParagraphNavigatorNodeByIndex(*GetView()->GetDocShell()->GetDoc(), nIndex);
+    if (!pTextNode)
+        throw lang::IndexOutOfBoundsException(u"paragraph index out of range"_ustr, getXWeak());
+
+    const auto aFragments = lcl_GetParagraphNavigatorFragments(*pTextNode, GetView()->GetWrtShell().GetLayout());
+    uno::Sequence<awt::Rectangle> aRet(aFragments.size());
+    SwEditWin& rEditWin = GetView()->GetEditWin();
+    for (size_t i = 0; i < aFragments.size(); ++i)
+        aRet.getArray()[i] = lcl_CreateUnoRect(rEditWin.LogicToPixel(aFragments[i].SVRect()));
+
+    return aRet;
+}
+
+sal_Bool SAL_CALL SwXTextView::isVisible(sal_Int32 nIndex)
+{
+    SolarMutexGuard aGuard;
+    if (!GetView())
+        throw uno::RuntimeException();
+
+    const SwTextNode* pTextNode
+        = lcl_GetParagraphNavigatorNodeByIndex(*GetView()->GetDocShell()->GetDoc(), nIndex);
+    if (!pTextNode)
+        throw lang::IndexOutOfBoundsException(u"paragraph index out of range"_ustr, getXWeak());
+
+    const auto aFragments = lcl_GetParagraphNavigatorFragments(*pTextNode, GetView()->GetWrtShell().GetLayout());
+    const SwRect& rVisibleArea = GetView()->GetWrtShell().VisArea();
+    for (const auto& rFragment : aFragments)
+    {
+        if (rFragment.Overlaps(rVisibleArea))
+            return true;
+    }
+
+    return false;
+}
+
+OUString SAL_CALL SwXTextView::getParagraphText(sal_Int32 nIndex)
+{
+    SolarMutexGuard aGuard;
+    if (!GetView())
+        throw uno::RuntimeException();
+
+    const SwTextNode* pTextNode
+        = lcl_GetParagraphNavigatorNodeByIndex(*GetView()->GetDocShell()->GetDoc(), nIndex);
+    if (!pTextNode)
+        throw lang::IndexOutOfBoundsException(u"paragraph index out of range"_ustr, getXWeak());
+
+    return pTextNode->GetExpandText(GetView()->GetWrtShell().GetLayout());
+}
+
+OUString SAL_CALL SwXTextView::getParagraphStyleName(sal_Int32 nIndex)
+{
+    SolarMutexGuard aGuard;
+    if (!GetView())
+        throw uno::RuntimeException();
+
+    const SwTextNode* pTextNode
+        = lcl_GetParagraphNavigatorNodeByIndex(*GetView()->GetDocShell()->GetDoc(), nIndex);
+    if (!pTextNode)
+        throw lang::IndexOutOfBoundsException(u"paragraph index out of range"_ustr, getXWeak());
+
+    return pTextNode->GetTextColl()->GetName().toString();
 }
 
 uno::Reference<text::XTextRange>

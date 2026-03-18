@@ -21,6 +21,7 @@
 
 #include <sfx2/sfxbasecontroller.hxx>
 #include <comphelper/interfacecontainer3.hxx>
+#include <com/sun/star/text/XParagraphNavigator.hpp>
 #include <com/sun/star/text/XTextViewCursor.hpp>
 #include <com/sun/star/text/XTextViewCursorSupplier.hpp>
 #include <com/sun/star/text/XTextViewTextRangeSupplier.hpp>
@@ -57,6 +58,7 @@ typedef cppu::ImplInheritanceHelper<
             css::lang::XServiceInfo,
             css::view::XFormLayerAccess,
             css::text::XTextViewCursorSupplier,
+            css::text::XParagraphNavigator,
             css::text::XTextViewTextRangeSupplier,
             css::text::XRubySelection,
             css::view::XViewSettingsSupplier,
@@ -99,6 +101,19 @@ public:
 
     //XTextViewCursorSupplier
     virtual css::uno::Reference< css::text::XTextViewCursor >  SAL_CALL getViewCursor() override;
+
+    // XParagraphNavigator
+    virtual sal_Int32 SAL_CALL getCount() override;
+    virtual sal_Int32 SAL_CALL getCurrentIndex() override;
+    virtual void SAL_CALL gotoIndex(sal_Int32 nIndex, sal_Bool bSelect) override;
+    virtual sal_Bool SAL_CALL gotoNext(sal_Bool bSelect) override;
+    virtual sal_Bool SAL_CALL gotoPrevious(sal_Bool bSelect) override;
+    virtual void SAL_CALL selectCurrentParagraph() override;
+    virtual css::uno::Sequence<css::awt::Rectangle> SAL_CALL getParagraphBounds(sal_Int32 nIndex) override;
+    virtual css::uno::Sequence<css::awt::Rectangle> SAL_CALL getParagraphViewBounds(sal_Int32 nIndex) override;
+    virtual sal_Bool SAL_CALL isVisible(sal_Int32 nIndex) override;
+    virtual OUString SAL_CALL getParagraphText(sal_Int32 nIndex) override;
+    virtual OUString SAL_CALL getParagraphStyleName(sal_Int32 nIndex) override;
 
     // XTextViewTextRangeSupplier
     virtual css::uno::Reference<css::text::XTextRange>

@@ -1,0 +1,130 @@
+/* -*- Mode: C++; tab-width: 4; indent-tabs-mode: nil; c-basic-offset: 4 -*- */
+/*
+ * This file is part of the LibreOffice project.
+ *
+ * This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at http://mozilla.org/MPL/2.0/.
+ *
+ * This file incorporates work covered by the following license notice:
+ *
+ *   Licensed to the Apache Software Foundation (ASF) under one or more
+ *   contributor license agreements. See the NOTICE file distributed
+ *   with this work for additional information regarding copyright
+ *   ownership. The ASF licenses this file to you under the Apache
+ *   License, Version 2.0 (the "License"); you may not use this file
+ *   except in compliance with the License. You may obtain a copy of
+ *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
+ */
+
+#ifndef com_sun_star_text_XParagraphNavigator_idl
+#define com_sun_star_text_XParagraphNavigator_idl
+
+#include <com/sun/star/uno/XInterface.idl>
+#include <com/sun/star/awt/Rectangle.idl>
+#include <com/sun/star/lang/IndexOutOfBoundsException.idl>
+
+module com { module sun { module star { module text {
+
+/** provides paragraph-level navigation and geometry queries for a text document view.
+
+    <p>The geometry returned by this interface is a snapshot of the current document
+    layout. Callers must re-query after scrolling, zooming, editing, or other layout
+    changes.</p>
+ */
+published interface XParagraphNavigator: com::sun::star::uno::XInterface
+{
+    /** returns the number of supported paragraphs in the current view scope.
+     */
+    long getCount();
+
+    /** returns the current paragraph index, or `-1` if the view cursor is outside the
+        supported paragraph scope.
+     */
+    long getCurrentIndex();
+
+    /** moves the view cursor to the paragraph at `Index`.
+
+        @throws com::sun::star::lang::IndexOutOfBoundsException
+            if `Index` is outside the range `0 .. getCount()-1`
+     */
+    void gotoIndex(
+        [in] long Index,
+        [in] boolean Select )
+        raises (com::sun::star::lang::IndexOutOfBoundsException);
+
+    /** moves the view cursor to the next paragraph.
+
+        @returns
+            `TRUE` if the cursor moved to a supported next paragraph,
+            `FALSE` otherwise.
+     */
+    boolean gotoNext( [in] boolean Select );
+
+    /** moves the view cursor to the previous paragraph.
+
+        @returns
+            `TRUE` if the cursor moved to a supported previous paragraph,
+            `FALSE` otherwise.
+     */
+    boolean gotoPrevious( [in] boolean Select );
+
+    /** selects the current paragraph using the view's normal selection behavior.
+     */
+    void selectCurrentParagraph();
+
+    /** returns paragraph layout fragment rectangles in document coordinates.
+
+        <p>The returned rectangles are in twips and use the document's logic coordinate
+        space. A paragraph may return multiple rectangles if it spans multiple layout
+        fragments.</p>
+
+        @throws com::sun::star::lang::IndexOutOfBoundsException
+            if `Index` is outside the range `0 .. getCount()-1`
+     */
+    sequence<com::sun::star::awt::Rectangle> getParagraphBounds(
+        [in] long Index )
+        raises (com::sun::star::lang::IndexOutOfBoundsException);
+
+    /** returns paragraph layout fragment rectangles in view coordinates.
+
+        <p>The returned rectangles are in pixels and use the current document view's client
+        area as the origin.</p>
+
+        @throws com::sun::star::lang::IndexOutOfBoundsException
+            if `Index` is outside the range `0 .. getCount()-1`
+     */
+    sequence<com::sun::star::awt::Rectangle> getParagraphViewBounds(
+        [in] long Index )
+        raises (com::sun::star::lang::IndexOutOfBoundsException);
+
+    /** returns whether any paragraph fragment overlaps the current visible area.
+
+        @throws com::sun::star::lang::IndexOutOfBoundsException
+            if `Index` is outside the range `0 .. getCount()-1`
+     */
+    boolean isVisible( [in] long Index )
+        raises (com::sun::star::lang::IndexOutOfBoundsException);
+
+    /** returns the expanded paragraph text.
+
+        @throws com::sun::star::lang::IndexOutOfBoundsException
+            if `Index` is outside the range `0 .. getCount()-1`
+     */
+    string getParagraphText( [in] long Index )
+        raises (com::sun::star::lang::IndexOutOfBoundsException);
+
+    /** returns the paragraph style name.
+
+        @throws com::sun::star::lang::IndexOutOfBoundsException
+            if `Index` is outside the range `0 .. getCount()-1`
+     */
+    string getParagraphStyleName( [in] long Index )
+        raises (com::sun::star::lang::IndexOutOfBoundsException);
+};
+
+}; }; }; };
+
+#endif
+
+/* vim:set shiftwidth=4 softtabstop=4 expandtab: */

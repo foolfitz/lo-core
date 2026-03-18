@@ -38,6 +38,11 @@ published service TextDocumentView
      */
     interface com::sun::star::text::XTextViewCursorSupplier;
 
+    /** This interface provides paragraph-level navigation and geometry
+        queries for the current text document view.
+     */
+    [optional] interface com::sun::star::text::XParagraphNavigator;
+
 
     /** Gives access to the objects properties.
 
