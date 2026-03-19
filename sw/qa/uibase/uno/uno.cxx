@@ -29,9 +29,11 @@
 #include <com/sun/star/view/XViewSettingsSupplier.hpp>
 
 #include <toolkit/helper/vclunohelper.hxx>
+#include <vcl/BitmapReadAccess.hxx>
 #include <vcl/scheduler.hxx>
 #include <vcl/mapmod.hxx>
 #include <vcl/outdev.hxx>
+#include <vcl/virdev.hxx>
 #include <tools/json_writer.hxx>
 #include <comphelper/propertyvalue.hxx>
 #include <cppuhelper/implbase.hxx>
@@ -100,6 +102,39 @@ public:
     }
 };
 std::vector<sal_Int32>* MockOverlayPainter::s_pGlobalOrder = nullptr;
+
+class CornerOverlayPainter : public cppu::WeakImplHelper<css::text::XOverlayPainter>
+{
+public:
+    sal_Int32 m_nPaintCount = 0;
+    tools::Rectangle m_aLastPaintRectPixel;
+
+    static constexpr tools::Long s_nMarginPixels = 24;
+    static constexpr tools::Long s_nSizePixels = 24;
+
+    void SAL_CALL paintOverlay(const css::uno::Reference<css::awt::XGraphics>& xGraphics,
+                               const css::awt::Rectangle&) override
+    {
+        ++m_nPaintCount;
+        if (OutputDevice* pOutDev = VCLUnoHelper::GetOutputDevice(xGraphics))
+        {
+            auto aScopedPush = pOutDev->ScopedPush(vcl::PushFlags::LINECOLOR
+                                                   | vcl::PushFlags::FILLCOLOR
+                                                   | vcl::PushFlags::MAPMODE);
+            pOutDev->SetMapMode(MapMode(MapUnit::MapPixel));
+
+            const Size aOutSize = pOutDev->GetOutputSizePixel();
+            m_aLastPaintRectPixel = tools::Rectangle(
+                Point(aOutSize.Width() - s_nMarginPixels - s_nSizePixels,
+                      aOutSize.Height() - s_nMarginPixels - s_nSizePixels),
+                Size(s_nSizePixels, s_nSizePixels));
+
+            pOutDev->SetLineColor(COL_RED);
+            pOutDev->SetFillColor(COL_RED);
+            pOutDev->DrawRect(m_aLastPaintRectPixel);
+        }
+    }
+};
 
 class ReentrantOverlayPainter : public cppu::WeakImplHelper<css::text::XOverlayPainter>
 {
@@ -170,6 +205,29 @@ void lcl_AssertViewRectMatchesDocRect(SwEditWin& rEditWin, const awt::Rectangle&
     CPPUNIT_ASSERT_EQUAL(static_cast<sal_Int32>(aTopLeft.getY()), rViewRect.Y);
     CPPUNIT_ASSERT(std::abs(static_cast<sal_Int32>(aPixelSize.Width()) - rViewRect.Width) <= 1);
     CPPUNIT_ASSERT(std::abs(static_cast<sal_Int32>(aPixelSize.Height()) - rViewRect.Height) <= 1);
+}
+
+Color lcl_GetOutDevPixelColor(OutputDevice& rOutDev, const Point& rPixel)
+{
+    auto aScopedPush = rOutDev.ScopedPush(vcl::PushFlags::MAPMODE);
+    rOutDev.SetMapMode(MapMode(MapUnit::MapPixel));
+
+    const Size aSize = rOutDev.GetOutputSizePixel();
+    CPPUNIT_ASSERT(rPixel.getX() >= 0);
+    CPPUNIT_ASSERT(rPixel.getY() >= 0);
+    CPPUNIT_ASSERT(rPixel.getX() < aSize.Width());
+    CPPUNIT_ASSERT(rPixel.getY() < aSize.Height());
+
+    Bitmap aBitmap = rOutDev.GetBitmap(Point(), aSize);
+    BitmapScopedReadAccess pAccess(aBitmap);
+    CPPUNIT_ASSERT(pAccess);
+    return pAccess->GetPixel(rPixel.getY(), rPixel.getX());
+}
+
+Point lcl_GetOverlaySamplePixel(const tools::Rectangle& rPaintRectPixel)
+{
+    return Point(rPaintRectPixel.Left() + rPaintRectPixel.GetWidth() / 2,
+                 rPaintRectPixel.Top() + rPaintRectPixel.GetHeight() / 2);
 }
 
 void lcl_AssertParagraphNavigatorOutOfScope(
@@ -1108,6 +1166,7 @@ CPPUNIT_TEST_FIXTURE(SwUibaseUnoTest, testDocumentOverlayPaintCallback)
     CPPUNIT_ASSERT_EQUAL(MapUnit::MapTwip, xPainter->m_aLastMapMode.GetMapUnit());
     const MapMode& rExpectedMapMode = getSwDocShell()->GetWrtShell()->getPrePostMapMode();
     CPPUNIT_ASSERT(rExpectedMapMode == xPainter->m_aLastMapMode);
+    CPPUNIT_ASSERT_EQUAL(OUTDEV_VIRDEV, xPainter->m_eLastOutDevType);
 
     xOverlay->removeOverlay(nHandle);
 }
@@ -1212,7 +1271,7 @@ CPPUNIT_TEST_FIXTURE(SwUibaseUnoTest, testDocumentOverlayDisposeCleanup)
 
 // Phase 5: overlay paint buffer tests
 
-CPPUNIT_TEST_FIXTURE(SwUibaseUnoTest, testDocumentOverlayBufferDirtyTracking)
+CPPUNIT_TEST_FIXTURE(SwUibaseUnoTest, testDocumentOverlayPaintCallbackEveryRepaint)
 {
     createSwDoc();
     uno::Reference<frame::XModel> xModel(mxComponent, uno::UNO_QUERY_THROW);
@@ -1229,15 +1288,17 @@ CPPUNIT_TEST_FIXTURE(SwUibaseUnoTest, testDocumentOverlayBufferDirtyTracking)
     sal_Int32 nCountAfterFirst = xPainter->m_nPaintCount;
     CPPUNIT_ASSERT(nCountAfterFirst >= 1);
 
-    // Second paint WITHOUT invalidateOverlay: painter should NOT be called again
+    // A second paint must still invoke the painter to preserve the published
+    // repaint callback contract.
     rEditWin.Invalidate();
     rEditWin.PaintImmediately();
-    CPPUNIT_ASSERT_EQUAL(nCountAfterFirst, xPainter->m_nPaintCount);
+    CPPUNIT_ASSERT(xPainter->m_nPaintCount > nCountAfterFirst);
 
     // After invalidateOverlay: painter should be called again
+    sal_Int32 nCountBeforeInvalidate = xPainter->m_nPaintCount;
     xOverlay->invalidateOverlay(css::awt::Rectangle(0, 0, 0, 0));
     rEditWin.PaintImmediately();
-    CPPUNIT_ASSERT(xPainter->m_nPaintCount > nCountAfterFirst);
+    CPPUNIT_ASSERT(xPainter->m_nPaintCount > nCountBeforeInvalidate);
 
     xOverlay->removeOverlay(nHandle);
 }
@@ -1248,23 +1309,53 @@ CPPUNIT_TEST_FIXTURE(SwUibaseUnoTest, testDocumentOverlayBufferSurvivesPartialRe
     uno::Reference<frame::XModel> xModel(mxComponent, uno::UNO_QUERY_THROW);
     uno::Reference<text::XDocumentOverlay> xOverlay = lcl_GetDocumentOverlay(xModel);
 
-    rtl::Reference<MockOverlayPainter> xPainter(new MockOverlayPainter);
+    rtl::Reference<CornerOverlayPainter> xPainter(new CornerOverlayPainter);
     sal_Int32 nHandle = xOverlay->addOverlay(xPainter, 0);
 
     SwEditWin& rEditWin = getSwDocShell()->GetView()->GetEditWin();
+    SwView& rView = *getSwDocShell()->GetView();
 
-    // Full paint to populate buffer
-    rEditWin.Invalidate();
-    rEditWin.PaintImmediately();
-    sal_Int32 nCountAfterFull = xPainter->m_nPaintCount;
-    CPPUNIT_ASSERT(nCountAfterFull >= 1);
+    auto lcl_PaintIntoTarget = [&](VirtualDevice& rTarget, const tools::Rectangle* pClipRect) {
+        rTarget.SetOutputSizePixel(rEditWin.GetOutputSizePixel(), /*bErase=*/true,
+                                   /*bAlphaMaskTransparent=*/true);
+        rTarget.SetBackground(Wallpaper(COL_WHITE));
+        rTarget.Erase();
 
-    // Partial invalidate (small rect, simulating cursor blink)
-    rEditWin.Invalidate(tools::Rectangle(Point(10, 10), Size(20, 20)));
-    rEditWin.PaintImmediately();
+        OutputDevice* pWindowOutDev = rEditWin.GetOutDev();
+        CPPUNIT_ASSERT(pWindowOutDev);
 
-    // Painter should NOT have been called again (buffer is clean)
-    CPPUNIT_ASSERT_EQUAL(nCountAfterFull, xPainter->m_nPaintCount);
+        auto aScopedPush = pWindowOutDev->ScopedPush(vcl::PushFlags::CLIPREGION
+                                                     | vcl::PushFlags::MAPMODE);
+        pWindowOutDev->SetMapMode(MapMode(MapUnit::MapPixel));
+        if (pClipRect)
+            pWindowOutDev->SetClipRegion(vcl::Region(*pClipRect));
+        else
+            pWindowOutDev->SetClipRegion();
+
+        rEditWin.PaintToDevice(&rTarget, Point());
+    };
+
+    ScopedVclPtrInstance<VirtualDevice> xTarget(*rEditWin.GetOutDev(), DeviceFormat::WITH_ALPHA);
+    lcl_PaintIntoTarget(*xTarget, nullptr);
+    CPPUNIT_ASSERT(xPainter->m_nPaintCount >= 1);
+    CPPUNIT_ASSERT_EQUAL(
+        COL_RED,
+        lcl_GetOutDevPixelColor(*xTarget, lcl_GetOverlaySamplePixel(xPainter->m_aLastPaintRectPixel)));
+
+    // Paint only a tiny top-left rect: the overlay buffer compositing must
+    // still draw the bottom-right overlay outside this paint rect.
+    const tools::Rectangle aSmallClip(Point(0, 0), Size(20, 20));
+    lcl_PaintIntoTarget(*xTarget, &aSmallClip);
+    CPPUNIT_ASSERT_EQUAL(
+        COL_RED,
+        lcl_GetOutDevPixelColor(*xTarget, lcl_GetOverlaySamplePixel(xPainter->m_aLastPaintRectPixel)));
+
+    rView.SetZoom(SvxZoomType::PERCENT, 200);
+    Scheduler::ProcessEventsToIdle();
+    lcl_PaintIntoTarget(*xTarget, nullptr);
+    CPPUNIT_ASSERT_EQUAL(
+        COL_RED,
+        lcl_GetOutDevPixelColor(*xTarget, lcl_GetOverlaySamplePixel(xPainter->m_aLastPaintRectPixel)));
 
     xOverlay->removeOverlay(nHandle);
 }

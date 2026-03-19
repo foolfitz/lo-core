@@ -94,7 +94,6 @@ class SwXTextView final : public SwXTextView_Base
 
     // Phase 5: Overlay paint buffer
     VclPtr<VirtualDevice>  m_pOverlayBuffer;
-    bool                   m_bOverlayBufferDirty = true;
     MapMode                m_aOverlayBufferMapMode;
     Size                   m_aOverlayBufferSize;
 
@@ -201,7 +200,6 @@ public:
     void                    RepaintOverlayBuffer(const css::awt::Rectangle& rVisibleArea);
     void                    CompositOverlayBuffer(vcl::RenderContext& rRenderContext);
     void                    DisposeOverlayBuffer();
-    void                    MarkOverlayDirty();
 
     // temporary document used for PDF export of selections/multi-selections
     SfxObjectShellLock      BuildTmpSelectionDoc();

@@ -764,7 +764,6 @@ sal_Int32 SAL_CALL SwXTextView::addOverlay(
             return a.nLayer < b.nLayer;
         });
 
-    MarkOverlayDirty();
     EnsureOverlayBuffer();
     GetView()->GetEditWin().Invalidate();
     return nHandle;
@@ -785,8 +784,6 @@ void SAL_CALL SwXTextView::removeOverlay(sal_Int32 nHandle)
     m_aOverlays.erase(it);
     if (m_aOverlays.empty())
         DisposeOverlayBuffer();
-    else
-        MarkOverlayDirty();
     GetView()->GetEditWin().Invalidate();
 }
 
@@ -795,8 +792,6 @@ void SAL_CALL SwXTextView::invalidateOverlay(const awt::Rectangle& rArea)
     SolarMutexGuard aGuard;
     if (!GetView())
         throw uno::RuntimeException();
-
-    MarkOverlayDirty();
 
     SwEditWin& rEditWin = GetView()->GetEditWin();
     if (rArea.X == 0 && rArea.Y == 0 && rArea.Width == 0 && rArea.Height == 0)
@@ -827,7 +822,6 @@ void SAL_CALL SwXTextView::setOverlayVisible(sal_Int32 nHandle, sal_Bool bVisibl
     if (it->bVisible != bool(bVisible))
     {
         it->bVisible = bVisible;
-        MarkOverlayDirty();
         GetView()->GetEditWin().Invalidate();
     }
 }
@@ -891,15 +885,9 @@ void SwXTextView::CallOverlayPainters(
 
 // Phase 5: Overlay paint buffer management
 
-void SwXTextView::MarkOverlayDirty()
-{
-    m_bOverlayBufferDirty = true;
-}
-
 void SwXTextView::DisposeOverlayBuffer()
 {
     m_pOverlayBuffer.disposeAndClear();
-    m_bOverlayBufferDirty = true;
     m_aOverlayBufferSize = Size();
 }
 
@@ -924,13 +912,11 @@ void SwXTextView::EnsureOverlayBuffer()
             m_aOverlayBufferSize = aPixelSize;
             m_pOverlayBuffer->SetMapMode(aDocMapMode);
             m_aOverlayBufferMapMode = aDocMapMode;
-            m_bOverlayBufferDirty = true;
         }
         else if (m_aOverlayBufferMapMode != aDocMapMode)
         {
             m_pOverlayBuffer->SetMapMode(aDocMapMode);
             m_aOverlayBufferMapMode = aDocMapMode;
-            m_bOverlayBufferDirty = true;
         }
         return;
     }
@@ -942,19 +928,16 @@ void SwXTextView::EnsureOverlayBuffer()
     m_pOverlayBuffer->SetMapMode(aDocMapMode);
     m_aOverlayBufferSize = aPixelSize;
     m_aOverlayBufferMapMode = aDocMapMode;
-    m_bOverlayBufferDirty = true;
 }
 
 void SwXTextView::RepaintOverlayBuffer(const awt::Rectangle& rVisibleArea)
 {
-    if (!m_pOverlayBuffer || !m_bOverlayBufferDirty)
+    if (!m_pOverlayBuffer)
         return;
 
-    // Clear dirty flag before calling painters so that if a callback
-    // triggers addOverlay/removeOverlay, the flag gets re-set to true.
-    m_bOverlayBufferDirty = false;
-
-    // Clear entire buffer to transparent
+    // Repaint on every view paint to preserve the published callback
+    // contract, but render into an off-screen buffer so the window clip
+    // region no longer erases overlays outside the invalidated rect.
     m_pOverlayBuffer->SetBackground(Wallpaper(COL_TRANSPARENT));
     m_pOverlayBuffer->Erase();
 
@@ -979,9 +962,10 @@ void SwXTextView::CompositOverlayBuffer(vcl::RenderContext& rRenderContext)
     rRenderContext.SetMapMode(MapMode(MapUnit::MapPixel));
 
     const Size aSize = m_pOverlayBuffer->GetOutputSizePixel();
+    const Size aSrcSize = m_pOverlayBuffer->PixelToLogic(aSize);
     rRenderContext.DrawOutDev(
         Point(0, 0), aSize,
-        Point(0, 0), aSize,
+        Point(0, 0), aSrcSize,
         *m_pOverlayBuffer);
 }
 
