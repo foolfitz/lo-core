@@ -46,6 +46,7 @@
 #include <svl/itemprop.hxx>
 #include <TextCursorHelper.hxx>
 #include <comphelper/uno3.hxx>
+#include <vcl/virdev.hxx>
 
 #include <sfx2/objsh.hxx>
 
@@ -90,6 +91,12 @@ class SwXTextView final : public SwXTextView_Base
     };
     std::vector<OverlayEntry> m_aOverlays;
     sal_Int32 m_nNextOverlayHandle = 1;
+
+    // Phase 5: Overlay paint buffer
+    VclPtr<VirtualDevice>  m_pOverlayBuffer;
+    bool                   m_bOverlayBufferDirty = true;
+    MapMode                m_aOverlayBufferMapMode;
+    Size                   m_aOverlayBufferSize;
 
     SdrObject* GetControl(
         const css::uno::Reference< css::awt::XControlModel > & Model,
@@ -188,6 +195,13 @@ public:
     void                    CallOverlayPainters(
                                 const css::uno::Reference<css::awt::XGraphics>& xGraphics,
                                 const css::awt::Rectangle& rVisibleArea);
+
+    // Phase 5: overlay paint buffer management
+    void                    EnsureOverlayBuffer();
+    void                    RepaintOverlayBuffer(const css::awt::Rectangle& rVisibleArea);
+    void                    CompositOverlayBuffer(vcl::RenderContext& rRenderContext);
+    void                    DisposeOverlayBuffer();
+    void                    MarkOverlayDirty();
 
     // temporary document used for PDF export of selections/multi-selections
     SfxObjectShellLock      BuildTmpSelectionDoc();

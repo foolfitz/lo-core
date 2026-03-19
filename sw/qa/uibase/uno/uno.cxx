@@ -1210,6 +1210,86 @@ CPPUNIT_TEST_FIXTURE(SwUibaseUnoTest, testDocumentOverlayDisposeCleanup)
     mxComponent.clear();
 }
 
+// Phase 5: overlay paint buffer tests
+
+CPPUNIT_TEST_FIXTURE(SwUibaseUnoTest, testDocumentOverlayBufferDirtyTracking)
+{
+    createSwDoc();
+    uno::Reference<frame::XModel> xModel(mxComponent, uno::UNO_QUERY_THROW);
+    uno::Reference<text::XDocumentOverlay> xOverlay = lcl_GetDocumentOverlay(xModel);
+
+    rtl::Reference<MockOverlayPainter> xPainter(new MockOverlayPainter);
+    sal_Int32 nHandle = xOverlay->addOverlay(xPainter, 0);
+
+    SwEditWin& rEditWin = getSwDocShell()->GetView()->GetEditWin();
+
+    // First paint: buffer is dirty, painter should be called
+    rEditWin.Invalidate();
+    rEditWin.PaintImmediately();
+    sal_Int32 nCountAfterFirst = xPainter->m_nPaintCount;
+    CPPUNIT_ASSERT(nCountAfterFirst >= 1);
+
+    // Second paint WITHOUT invalidateOverlay: painter should NOT be called again
+    rEditWin.Invalidate();
+    rEditWin.PaintImmediately();
+    CPPUNIT_ASSERT_EQUAL(nCountAfterFirst, xPainter->m_nPaintCount);
+
+    // After invalidateOverlay: painter should be called again
+    xOverlay->invalidateOverlay(css::awt::Rectangle(0, 0, 0, 0));
+    rEditWin.PaintImmediately();
+    CPPUNIT_ASSERT(xPainter->m_nPaintCount > nCountAfterFirst);
+
+    xOverlay->removeOverlay(nHandle);
+}
+
+CPPUNIT_TEST_FIXTURE(SwUibaseUnoTest, testDocumentOverlayBufferSurvivesPartialRepaint)
+{
+    createSwDoc();
+    uno::Reference<frame::XModel> xModel(mxComponent, uno::UNO_QUERY_THROW);
+    uno::Reference<text::XDocumentOverlay> xOverlay = lcl_GetDocumentOverlay(xModel);
+
+    rtl::Reference<MockOverlayPainter> xPainter(new MockOverlayPainter);
+    sal_Int32 nHandle = xOverlay->addOverlay(xPainter, 0);
+
+    SwEditWin& rEditWin = getSwDocShell()->GetView()->GetEditWin();
+
+    // Full paint to populate buffer
+    rEditWin.Invalidate();
+    rEditWin.PaintImmediately();
+    sal_Int32 nCountAfterFull = xPainter->m_nPaintCount;
+    CPPUNIT_ASSERT(nCountAfterFull >= 1);
+
+    // Partial invalidate (small rect, simulating cursor blink)
+    rEditWin.Invalidate(tools::Rectangle(Point(10, 10), Size(20, 20)));
+    rEditWin.PaintImmediately();
+
+    // Painter should NOT have been called again (buffer is clean)
+    CPPUNIT_ASSERT_EQUAL(nCountAfterFull, xPainter->m_nPaintCount);
+
+    xOverlay->removeOverlay(nHandle);
+}
+
+CPPUNIT_TEST_FIXTURE(SwUibaseUnoTest, testDocumentOverlayBufferDisposedOnLastRemove)
+{
+    createSwDoc();
+    uno::Reference<frame::XModel> xModel(mxComponent, uno::UNO_QUERY_THROW);
+    uno::Reference<text::XDocumentOverlay> xOverlay = lcl_GetDocumentOverlay(xModel);
+
+    rtl::Reference<MockOverlayPainter> xPainter(new MockOverlayPainter);
+    sal_Int32 nHandle = xOverlay->addOverlay(xPainter, 0);
+
+    SwEditWin& rEditWin = getSwDocShell()->GetView()->GetEditWin();
+    rEditWin.Invalidate();
+    rEditWin.PaintImmediately();
+
+    // Remove the only overlay — buffer should be disposed
+    xOverlay->removeOverlay(nHandle);
+
+    // No crash on subsequent paint without overlays
+    rEditWin.Invalidate();
+    rEditWin.PaintImmediately();
+}
+
 CPPUNIT_PLUGIN_IMPLEMENT();
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

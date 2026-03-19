@@ -773,9 +773,9 @@ void SwEditWin::Paint(vcl::RenderContext& rRenderContext, const tools::Rectangle
             comphelper::LibreOfficeKit::setTiledPainting(bTiledPainting);
         }
 
-        // Extension overlay painting — after document content and internal
-        // overlays, but before setOutputToWindow(false) so we remain in
-        // screen-paint mode (overlays never appear in print output).
+        // Extension overlay painting — composit independent overlay buffer
+        // onto the screen after document content and internal overlays.
+        // Overlays never appear in print output.
         {
             SwXTextView* pTextView = dynamic_cast<SwXTextView*>(
                 GetView().GetController().get());
@@ -783,19 +783,14 @@ void SwEditWin::Paint(vcl::RenderContext& rRenderContext, const tools::Rectangle
                 && rRenderContext.GetOutDevType() != OUTDEV_PRINTER
                 && rRenderContext.GetOutDevType() != OUTDEV_PDF)
             {
-                auto popIt = rRenderContext.ScopedPush(vcl::PushFlags::ALL);
-                rRenderContext.SetMapMode(pWrtShell->getPrePostMapMode());
+                pTextView->EnsureOverlayBuffer();
 
-                css::uno::Reference<css::awt::XGraphics> xGraphics
-                    = rRenderContext.CreateUnoGraphics();
-                if (xGraphics.is())
-                {
-                    const tools::Rectangle& rVisArea = GetView().GetVisArea();
-                    css::awt::Rectangle aVisArea(
-                        rVisArea.Left(), rVisArea.Top(),
-                        rVisArea.GetWidth(), rVisArea.GetHeight());
-                    pTextView->CallOverlayPainters(xGraphics, aVisArea);
-                }
+                const tools::Rectangle& rVisArea = GetView().GetVisArea();
+                css::awt::Rectangle aVisArea(
+                    rVisArea.Left(), rVisArea.Top(),
+                    rVisArea.GetWidth(), rVisArea.GetHeight());
+                pTextView->RepaintOverlayBuffer(aVisArea);
+                pTextView->CompositOverlayBuffer(rRenderContext);
             }
         }
 
