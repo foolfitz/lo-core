@@ -46,12 +46,16 @@
 #include <svl/itemprop.hxx>
 #include <TextCursorHelper.hxx>
 #include <comphelper/uno3.hxx>
-#include <vcl/virdev.hxx>
 
 #include <sfx2/objsh.hxx>
+#include <drawinglayer/primitive2d/Primitive2DContainer.hxx>
+#include <vcl/mapmod.hxx>
+
+#include <memory>
 
 class SdrObject;
 class SwView;
+namespace sw::overlay { class OverlayExtensionPainter; }
 class SwXViewSettings;
 class SwXTextViewCursor;
 
@@ -91,11 +95,15 @@ class SwXTextView final : public SwXTextView_Base
     };
     std::vector<OverlayEntry> m_aOverlays;
     sal_Int32 m_nNextOverlayHandle = 1;
+    // Single shared OverlayObject for all extension overlays.
+    std::unique_ptr<sw::overlay::OverlayExtensionPainter> m_pOverlayObj;
+    bool m_bOverlayRegistered = false;
+    bool m_bPaintingOverlays = false; // reentrancy guard
 
-    // Phase 5: Overlay paint buffer
-    VclPtr<VirtualDevice>  m_pOverlayBuffer;
-    MapMode                m_aOverlayBufferMapMode;
-    Size                   m_aOverlayBufferSize;
+    void ensureOverlayRegistered();
+    void destroyOverlayObj();
+    drawinglayer::primitive2d::Primitive2DContainer paintAllOverlays(
+        const css::awt::Rectangle& rVisibleArea);
 
     SdrObject* GetControl(
         const css::uno::Reference< css::awt::XControlModel > & Model,
@@ -189,17 +197,8 @@ public:
     SwView*                 GetView() {return m_pView;}
     void                    Invalidate();
 
-    // overlay paint helpers (called from SwEditWin::Paint)
+    // overlay query helper
     bool                    HasOverlays() const;
-    void                    CallOverlayPainters(
-                                const css::uno::Reference<css::awt::XGraphics>& xGraphics,
-                                const css::awt::Rectangle& rVisibleArea);
-
-    // Phase 5: overlay paint buffer management
-    void                    EnsureOverlayBuffer();
-    void                    RepaintOverlayBuffer(const css::awt::Rectangle& rVisibleArea);
-    void                    CompositOverlayBuffer(vcl::RenderContext& rRenderContext);
-    void                    DisposeOverlayBuffer();
 
     // temporary document used for PDF export of selections/multi-selections
     SfxObjectShellLock      BuildTmpSelectionDoc();

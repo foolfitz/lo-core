@@ -67,7 +67,6 @@
 #include <names.hxx>
 #include <com/sun/star/style/XStyleFamiliesSupplier.hpp>
 #include <LibreOfficeKit/LibreOfficeKitEnums.h>
-#include <unotxvw.hxx>
 #include <sfx2/sfxbasecontroller.hxx>
 
 namespace {
@@ -768,30 +767,10 @@ void SwEditWin::Paint(vcl::RenderContext& rRenderContext, const tools::Rectangle
             comphelper::LibreOfficeKit::setTiledPainting(true);
         }
         pWrtShell->Paint(rRenderContext, rRect);
+
         if (comphelper::LibreOfficeKit::isActive())
         {
             comphelper::LibreOfficeKit::setTiledPainting(bTiledPainting);
-        }
-
-        // Extension overlay painting — composit independent overlay buffer
-        // onto the screen after document content and internal overlays.
-        // Overlays never appear in print output.
-        {
-            SwXTextView* pTextView = dynamic_cast<SwXTextView*>(
-                GetView().GetController().get());
-            if (pTextView && pTextView->HasOverlays()
-                && rRenderContext.GetOutDevType() != OUTDEV_PRINTER
-                && rRenderContext.GetOutDevType() != OUTDEV_PDF)
-            {
-                pTextView->EnsureOverlayBuffer();
-
-                const tools::Rectangle& rVisArea = GetView().GetVisArea();
-                css::awt::Rectangle aVisArea(
-                    rVisArea.Left(), rVisArea.Top(),
-                    rVisArea.GetWidth(), rVisArea.GetHeight());
-                pTextView->RepaintOverlayBuffer(aVisArea);
-                pTextView->CompositOverlayBuffer(rRenderContext);
-            }
         }
 
         pWrtShell->setOutputToWindow(false);

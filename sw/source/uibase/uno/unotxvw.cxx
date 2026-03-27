@@ -80,6 +80,12 @@
 #include <comphelper/dumpxmltostring.hxx>
 #include <fmtanchr.hxx>
 #include <names.hxx>
+#include <OverlayExtensionPainter.hxx>
+#include <svx/sdrpaintwindow.hxx>
+#include <svx/sdr/overlay/overlaymanager.hxx>
+#include <drawinglayer/primitive2d/bitmapprimitive2d.hxx>
+#include <basegfx/matrix/b2dhommatrix.hxx>
+#include <vcl/virdev.hxx>
 
 using namespace ::com::sun::star;
 using namespace ::com::sun::star::uno;
@@ -219,7 +225,6 @@ SwXTextView::SwXTextView(SwView* pSwView) :
     m_pView(pSwView),
     m_pPropSet( aSwMapProvider.GetPropertySet( PROPERTY_MAP_TEXT_VIEW ) )
 {
-
 }
 
 SwXTextView::~SwXTextView()
@@ -250,7 +255,9 @@ void SwXTextView::Invalidate()
     }
 
     osl_atomic_decrement(&m_refCount);
-    DisposeOverlayBuffer();
+    // Destroy OverlayObject first (its dtor removes from OverlayManager),
+    // then clear the entry list.
+    destroyOverlayObj();
     m_aOverlays.clear();
     m_pView = nullptr;
 }
@@ -744,6 +751,164 @@ OUString SAL_CALL SwXTextView::getParagraphStyleName(sal_Int32 nIndex)
 
 // XDocumentOverlay
 
+void SwXTextView::ensureOverlayRegistered()
+{
+    if (!m_pOverlayObj)
+        return;
+
+    // Detect stale registration: OverlayManager may have been destroyed
+    // (e.g. during zoom change) which sets mpOverlayManager to nullptr
+    // on the OverlayObject but leaves m_bOverlayRegistered true.
+    if (m_bOverlayRegistered && m_pOverlayObj->getOverlayManager())
+        return; // still validly registered
+
+    m_bOverlayRegistered = false; // reset stale flag
+
+    SdrView* pDV = GetView()->GetDrawView();
+    if (pDV && pDV->PaintWindowCount() > 0)
+    {
+        SdrPaintWindow* pPW = pDV->GetPaintWindow(0);
+        const rtl::Reference<sdr::overlay::OverlayManager>& xMgr
+            = pPW->GetOverlayManager();
+        if (xMgr.is())
+        {
+            xMgr->add(*m_pOverlayObj);
+            m_bOverlayRegistered = true;
+            SAL_INFO("sw.uno", "OverlayExtPainter: (re-)registered with OverlayManager");
+        }
+    }
+}
+
+void SwXTextView::destroyOverlayObj()
+{
+    // unique_ptr dtor → OverlayExtensionPainter dtor → removes from manager.
+    m_pOverlayObj.reset();
+    m_bOverlayRegistered = false;
+}
+
+drawinglayer::primitive2d::Primitive2DContainer SwXTextView::paintAllOverlays(
+    const css::awt::Rectangle& rVisibleArea)
+{
+    drawinglayer::primitive2d::Primitive2DContainer aResult;
+
+    // Reentrancy guard: callbacks may call addOverlay/removeOverlay/
+    // invalidateOverlay which can trigger recursive primitive creation
+    // via objectChange() → getBaseRange().
+    if (m_bPaintingOverlays)
+        return aResult;
+    m_bPaintingOverlays = true;
+
+    if (!GetView())
+    {
+        m_bPaintingOverlays = false;
+        return aResult;
+    }
+
+    // Snapshot visible painters so the iteration is safe even if
+    // callbacks modify m_aOverlays (reentrancy).
+    std::vector<css::uno::Reference<css::text::XOverlayPainter>> aSnapshot;
+    for (const auto& rEntry : m_aOverlays)
+    {
+        if (rEntry.bVisible && rEntry.xPainter.is())
+            aSnapshot.push_back(rEntry.xPainter);
+    }
+
+    for (const auto& xPainter : aSnapshot)
+    {
+        try
+        {
+            css::uno::Sequence<css::awt::Rectangle> aBounds
+                = xPainter->getOverlayBounds();
+            if (!aBounds.hasElements())
+                continue;
+
+            // Compute union bounding rect (document twips).
+            tools::Long nLeft = std::numeric_limits<tools::Long>::max();
+            tools::Long nTop = std::numeric_limits<tools::Long>::max();
+            tools::Long nRight = std::numeric_limits<tools::Long>::min();
+            tools::Long nBottom = std::numeric_limits<tools::Long>::min();
+            for (const auto& r : aBounds)
+            {
+                nLeft   = std::min(nLeft,   static_cast<tools::Long>(r.X));
+                nTop    = std::min(nTop,    static_cast<tools::Long>(r.Y));
+                nRight  = std::max(nRight,  static_cast<tools::Long>(r.X + r.Width));
+                nBottom = std::max(nBottom, static_cast<tools::Long>(r.Y + r.Height));
+            }
+            // Add a margin so that lines drawn at the exact edge of the
+            // bounding rect are not clipped by the VirtualDevice boundary.
+            // 40 twips ≈ 0.7mm — enough for a 1-pixel line at any zoom.
+            constexpr tools::Long nMargin = 40;
+            nLeft   -= nMargin;
+            nTop    -= nMargin;
+            nRight  += nMargin;
+            nBottom += nMargin;
+
+            const tools::Long nBoundW = nRight - nLeft;
+            const tools::Long nBoundH = nBottom - nTop;
+            if (nBoundW <= 0 || nBoundH <= 0)
+                continue;
+
+            // Create a VirtualDevice with alpha, paint the extension
+            // overlay into it, then wrap the bitmap as a BitmapPrimitive2D.
+            MapMode rDocMapMode = GetView()->GetEditWin().GetMapMode();
+
+            ScopedVclPtrInstance<VirtualDevice> pVDev(DeviceFormat::WITH_ALPHA);
+            pVDev->SetMapMode(MapMode(rDocMapMode.GetMapUnit(),
+                Point(-nLeft, -nTop),
+                rDocMapMode.GetScaleX(),
+                rDocMapMode.GetScaleY()));
+            pVDev->SetBackground(Wallpaper(COL_TRANSPARENT));
+
+            // Size the VDev in logical units (twips).
+            pVDev->SetOutputSizePixel(
+                pVDev->LogicToPixel(Size(nBoundW, nBoundH)));
+            pVDev->Erase();
+
+            // Get UNO XGraphics for the painter callback.
+            uno::Reference<awt::XGraphics> xGraphics(pVDev->CreateUnoGraphics());
+            if (!xGraphics.is())
+                continue;
+
+            xPainter->paintOverlay(xGraphics, rVisibleArea);
+
+            // Extract bitmap with MapMode disabled to get raw pixels.
+            const Size aPixelSize = pVDev->GetOutputSizePixel();
+            pVDev->EnableMapMode(false);
+            Bitmap aBmp = pVDev->GetBitmap(Point(0, 0), aPixelSize);
+            pVDev->EnableMapMode(true);
+
+            if (aBmp.IsEmpty())
+                continue;
+
+            // Build transform: map unit square [0,1]x[0,1] to document
+            // twip rectangle [nLeft,nTop,nRight,nBottom].
+            basegfx::B2DHomMatrix aTransform;
+            aTransform.set(0, 0, nBoundW); // scaleX
+            aTransform.set(1, 1, nBoundH); // scaleY
+            aTransform.set(0, 2, nLeft);   // translateX
+            aTransform.set(1, 2, nTop);    // translateY
+
+            aResult.push_back(
+                new drawinglayer::primitive2d::BitmapPrimitive2D(
+                    aBmp, aTransform));
+        }
+        catch (const css::uno::Exception&)
+        {
+            SAL_WARN("sw.uno",
+                "OverlayExtensionPainter: painter callback threw an exception");
+        }
+    }
+
+    m_bPaintingOverlays = false;
+
+    // Deferred cleanup: if all overlays were removed during the callback,
+    // destroy the OverlayObject now that we're safely outside the call.
+    if (m_aOverlays.empty())
+        destroyOverlayObj();
+
+    return aResult;
+}
+
 sal_Int32 SAL_CALL SwXTextView::addOverlay(
     const uno::Reference<text::XOverlayPainter>& xPainter,
     sal_Int32 nLayer)
@@ -756,16 +921,39 @@ sal_Int32 SAL_CALL SwXTextView::addOverlay(
             u"Painter must not be null"_ustr, getXWeak(), 0);
 
     sal_Int32 nHandle = m_nNextOverlayHandle++;
-    m_aOverlays.push_back({nHandle, nLayer, xPainter, true});
 
-    // Sort by layer, preserving registration order within the same layer
+    OverlayEntry aEntry;
+    aEntry.nHandle = nHandle;
+    aEntry.nLayer = nLayer;
+    aEntry.xPainter = xPainter;
+    aEntry.bVisible = true;
+    m_aOverlays.push_back(std::move(aEntry));
+
+    // Sort by layer, preserving registration order within the same layer.
     std::stable_sort(m_aOverlays.begin(), m_aOverlays.end(),
         [](const OverlayEntry& a, const OverlayEntry& b) {
             return a.nLayer < b.nLayer;
         });
 
-    EnsureOverlayBuffer();
-    GetView()->GetEditWin().Invalidate();
+    // Create the shared OverlayObject on first overlay and register
+    // with the OverlayManager.  Note: registration triggers immediate
+    // primitive creation via getBaseRange(), which calls paintAllOverlays().
+    if (!m_pOverlayObj)
+    {
+        m_pOverlayObj = std::make_unique<sw::overlay::OverlayExtensionPainter>(
+            [this](const css::awt::Rectangle& rVis)
+            {
+                return paintAllOverlays(rVis);
+            });
+        ensureOverlayRegistered();
+    }
+    else if (m_bOverlayRegistered && !m_bPaintingOverlays)
+    {
+        // New entry added — invalidate to include it on next paint.
+        // Skip during paint callback to avoid nested objectChange().
+        m_pOverlayObj->invalidate();
+    }
+
     return nHandle;
 }
 
@@ -782,29 +970,28 @@ void SAL_CALL SwXTextView::removeOverlay(sal_Int32 nHandle)
             u"invalid overlay handle"_ustr, getXWeak(), 0);
 
     m_aOverlays.erase(it);
-    if (m_aOverlays.empty())
-        DisposeOverlayBuffer();
-    GetView()->GetEditWin().Invalidate();
+
+    // Destroy shared OverlayObject when last overlay is removed.
+    // But NOT during a paint callback — the OverlayObject is still on
+    // the call stack.  It will be cleaned up after painting finishes.
+    if (m_aOverlays.empty() && !m_bPaintingOverlays)
+        destroyOverlayObj();
 }
 
-void SAL_CALL SwXTextView::invalidateOverlay(const awt::Rectangle& rArea)
+void SAL_CALL SwXTextView::invalidateOverlay(const awt::Rectangle& /*rArea*/)
 {
     SolarMutexGuard aGuard;
     if (!GetView())
         throw uno::RuntimeException();
 
-    SwEditWin& rEditWin = GetView()->GetEditWin();
-    if (rArea.X == 0 && rArea.Y == 0 && rArea.Width == 0 && rArea.Height == 0)
-    {
-        rEditWin.Invalidate();
-    }
-    else
-    {
-        tools::Rectangle aLogicRect(rArea.X, rArea.Y, rArea.X + rArea.Width,
-                                     rArea.Y + rArea.Height);
-        tools::Rectangle aPixelRect = rEditWin.LogicToPixel(aLogicRect);
-        rEditWin.Invalidate(aPixelRect);
-    }
+    if (!m_pOverlayObj)
+        return;
+
+    // Retry delayed registration if needed.
+    ensureOverlayRegistered();
+
+    if (m_bOverlayRegistered)
+        m_pOverlayObj->invalidate();
 }
 
 void SAL_CALL SwXTextView::setOverlayVisible(sal_Int32 nHandle, sal_Bool bVisible)
@@ -822,7 +1009,10 @@ void SAL_CALL SwXTextView::setOverlayVisible(sal_Int32 nHandle, sal_Bool bVisibl
     if (it->bVisible != bool(bVisible))
     {
         it->bVisible = bVisible;
-        GetView()->GetEditWin().Invalidate();
+        // Invalidate the shared OverlayObject so it re-paints with updated
+        // visibility state on next paint cycle.
+        if (m_pOverlayObj && m_bOverlayRegistered)
+            m_pOverlayObj->invalidate();
     }
 }
 
@@ -844,129 +1034,6 @@ sal_Bool SAL_CALL SwXTextView::isOverlayVisible(sal_Int32 nHandle)
 bool SwXTextView::HasOverlays() const
 {
     return !m_aOverlays.empty();
-}
-
-void SwXTextView::CallOverlayPainters(
-    const uno::Reference<awt::XGraphics>& xGraphics,
-    const awt::Rectangle& rVisibleArea)
-{
-    // Called from SwEditWin::Paint() which already holds the SolarMutex.
-    // Take a snapshot so callback-time add/remove operations do not invalidate
-    // the iteration state of the live registry.
-    std::vector<OverlayEntry> aSnapshot;
-    aSnapshot.reserve(m_aOverlays.size());
-    for (const auto& rEntry : m_aOverlays)
-    {
-        if (rEntry.bVisible)
-            aSnapshot.push_back(rEntry);
-    }
-
-    for (const auto& rEntry : aSnapshot)
-    {
-        auto it = std::find_if(m_aOverlays.begin(), m_aOverlays.end(),
-                               [nHandle = rEntry.nHandle](const OverlayEntry& rLiveEntry) {
-                                   return rLiveEntry.nHandle == nHandle;
-                               });
-        if (it == m_aOverlays.end() || !it->bVisible)
-            continue;
-
-        try
-        {
-            rEntry.xPainter->paintOverlay(xGraphics, rVisibleArea);
-        }
-        catch (const uno::Exception&)
-        {
-            // Swallow exceptions from extension callbacks to prevent
-            // crashing the VCL paint loop.
-            SAL_WARN("sw.uno", "XOverlayPainter::paintOverlay() threw an exception");
-        }
-    }
-}
-
-// Phase 5: Overlay paint buffer management
-
-void SwXTextView::DisposeOverlayBuffer()
-{
-    m_pOverlayBuffer.disposeAndClear();
-    m_aOverlayBufferSize = Size();
-}
-
-void SwXTextView::EnsureOverlayBuffer()
-{
-    if (!m_pView)
-        return;
-
-    SwEditWin& rEditWin = m_pView->GetEditWin();
-    const Size aPixelSize = rEditWin.GetOutputSizePixel();
-    if (aPixelSize.Width() <= 0 || aPixelSize.Height() <= 0)
-        return;
-
-    const MapMode aDocMapMode = m_pView->GetWrtShell().getPrePostMapMode();
-
-    if (m_pOverlayBuffer)
-    {
-        if (m_aOverlayBufferSize != aPixelSize)
-        {
-            m_pOverlayBuffer->SetOutputSizePixel(aPixelSize, /*bErase=*/true,
-                                                  /*bAlphaMaskTransparent=*/true);
-            m_aOverlayBufferSize = aPixelSize;
-            m_pOverlayBuffer->SetMapMode(aDocMapMode);
-            m_aOverlayBufferMapMode = aDocMapMode;
-        }
-        else if (m_aOverlayBufferMapMode != aDocMapMode)
-        {
-            m_pOverlayBuffer->SetMapMode(aDocMapMode);
-            m_aOverlayBufferMapMode = aDocMapMode;
-        }
-        return;
-    }
-
-    m_pOverlayBuffer = VclPtr<VirtualDevice>::Create(
-        *rEditWin.GetOutDev(), DeviceFormat::WITH_ALPHA);
-    m_pOverlayBuffer->SetOutputSizePixel(aPixelSize, /*bErase=*/true,
-                                          /*bAlphaMaskTransparent=*/true);
-    m_pOverlayBuffer->SetMapMode(aDocMapMode);
-    m_aOverlayBufferSize = aPixelSize;
-    m_aOverlayBufferMapMode = aDocMapMode;
-}
-
-void SwXTextView::RepaintOverlayBuffer(const awt::Rectangle& rVisibleArea)
-{
-    if (!m_pOverlayBuffer)
-        return;
-
-    // Repaint on every view paint to preserve the published callback
-    // contract, but render into an off-screen buffer so the window clip
-    // region no longer erases overlays outside the invalidated rect.
-    m_pOverlayBuffer->SetBackground(Wallpaper(COL_TRANSPARENT));
-    m_pOverlayBuffer->Erase();
-
-    // Create XGraphics pointing to the buffer
-    css::uno::Reference<css::awt::XGraphics> xGraphics
-        = m_pOverlayBuffer->CreateUnoGraphics();
-    if (!xGraphics.is())
-        return;
-
-    CallOverlayPainters(xGraphics, rVisibleArea);
-}
-
-void SwXTextView::CompositOverlayBuffer(vcl::RenderContext& rRenderContext)
-{
-    if (!m_pOverlayBuffer)
-        return;
-
-    // Temporarily clear clip region and switch to pixel MapMode for blit
-    auto aScopedPush = rRenderContext.ScopedPush(
-        vcl::PushFlags::CLIPREGION | vcl::PushFlags::MAPMODE);
-    rRenderContext.SetClipRegion();
-    rRenderContext.SetMapMode(MapMode(MapUnit::MapPixel));
-
-    const Size aSize = m_pOverlayBuffer->GetOutputSizePixel();
-    const Size aSrcSize = m_pOverlayBuffer->PixelToLogic(aSize);
-    rRenderContext.DrawOutDev(
-        Point(0, 0), aSize,
-        Point(0, 0), aSrcSize,
-        *m_pOverlayBuffer);
 }
 
 uno::Reference<text::XTextRange>

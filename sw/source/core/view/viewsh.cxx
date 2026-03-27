@@ -2093,6 +2093,7 @@ void SwViewShell::Paint(vcl::RenderContext& rRenderContext, const tools::Rectang
                     SwViewShell::sbLstAct = true;
                     GetLayout()->PaintSwFrame( rRenderContext, aRect );
                     SwViewShell::sbLstAct = false;
+
                     // --> OD 2009-08-12 #i101192#
                     // end Pre/PostPaint encapsulation
                     DLPostPaint2(true);
