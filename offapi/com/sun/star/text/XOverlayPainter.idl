@@ -71,6 +71,23 @@ published interface XOverlayPainter : com::sun::star::uno::XInterface
     void paintOverlay(
         [in] com::sun::star::awt::XGraphics Graphics,
         [in] com::sun::star::awt::Rectangle VisibleArea );
+
+    /** returns bounding rectangles of all regions this painter draws.
+
+        <p>The view uses these bounds to schedule targeted repaints when
+        a partial repaint does not cover all overlay regions.  Coordinates
+        use the same document-twips coordinate system as
+        {@link #paintOverlay} and
+        {@link XParagraphNavigator::getParagraphBounds}.</p>
+
+        <p>Returning an empty sequence is permitted; the view will fall
+        back to invalidating the entire visible area on partial repaints.
+        This is correct but less efficient.</p>
+
+        @returns
+            bounding rectangles in document-twip coordinates
+     */
+    sequence<com::sun::star::awt::Rectangle> getOverlayBounds();
 };
 
 }; }; }; };
