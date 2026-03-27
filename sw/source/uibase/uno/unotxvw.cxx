@@ -819,20 +819,31 @@ drawinglayer::primitive2d::Primitive2DContainer SwXTextView::paintAllOverlays(
         {
             css::uno::Sequence<css::awt::Rectangle> aBounds
                 = xPainter->getOverlayBounds();
-            if (!aBounds.hasElements())
-                continue;
 
             // Compute union bounding rect (document twips).
-            tools::Long nLeft = std::numeric_limits<tools::Long>::max();
-            tools::Long nTop = std::numeric_limits<tools::Long>::max();
-            tools::Long nRight = std::numeric_limits<tools::Long>::min();
-            tools::Long nBottom = std::numeric_limits<tools::Long>::min();
-            for (const auto& r : aBounds)
+            // If the painter returns an empty sequence, fall back to the
+            // entire visible area as documented in XOverlayPainter IDL.
+            tools::Long nLeft, nTop, nRight, nBottom;
+            if (!aBounds.hasElements())
             {
-                nLeft   = std::min(nLeft,   static_cast<tools::Long>(r.X));
-                nTop    = std::min(nTop,    static_cast<tools::Long>(r.Y));
-                nRight  = std::max(nRight,  static_cast<tools::Long>(r.X + r.Width));
-                nBottom = std::max(nBottom, static_cast<tools::Long>(r.Y + r.Height));
+                nLeft   = rVisibleArea.X;
+                nTop    = rVisibleArea.Y;
+                nRight  = rVisibleArea.X + rVisibleArea.Width;
+                nBottom = rVisibleArea.Y + rVisibleArea.Height;
+            }
+            else
+            {
+                nLeft   = std::numeric_limits<tools::Long>::max();
+                nTop    = std::numeric_limits<tools::Long>::max();
+                nRight  = std::numeric_limits<tools::Long>::min();
+                nBottom = std::numeric_limits<tools::Long>::min();
+                for (const auto& r : aBounds)
+                {
+                    nLeft   = std::min(nLeft,   static_cast<tools::Long>(r.X));
+                    nTop    = std::min(nTop,    static_cast<tools::Long>(r.Y));
+                    nRight  = std::max(nRight,  static_cast<tools::Long>(r.X + r.Width));
+                    nBottom = std::max(nBottom, static_cast<tools::Long>(r.Y + r.Height));
+                }
             }
             // Add a margin so that lines drawn at the exact edge of the
             // bounding rect are not clipped by the VirtualDevice boundary.

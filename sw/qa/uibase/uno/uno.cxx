@@ -1367,6 +1367,49 @@ CPPUNIT_TEST_FIXTURE(SwUibaseUnoTest, testDocumentOverlayRemoveAndRepaint)
     rEditWin.PaintImmediately();
 }
 
+/// A painter that returns an empty getOverlayBounds() sequence.
+/// Per XOverlayPainter IDL, the view must fall back to the full visible area
+/// and still call paintOverlay() — it must NOT skip the painter.
+class EmptyBoundsOverlayPainter : public cppu::WeakImplHelper<css::text::XOverlayPainter>
+{
+public:
+    sal_Int32 m_nPaintCount = 0;
+
+    void SAL_CALL paintOverlay(const css::uno::Reference<css::awt::XGraphics>&,
+                               const css::awt::Rectangle&) override
+    {
+        ++m_nPaintCount;
+    }
+
+    css::uno::Sequence<css::awt::Rectangle> SAL_CALL getOverlayBounds() override
+    {
+        return {}; // empty — triggers the visible-area fallback
+    }
+};
+
+CPPUNIT_TEST_FIXTURE(SwUibaseUnoTest, testDocumentOverlayEmptyBoundsFallback)
+{
+    // Given a painter that always returns empty getOverlayBounds()
+    createSwDoc();
+    uno::Reference<frame::XModel> xModel(mxComponent, uno::UNO_QUERY_THROW);
+    uno::Reference<text::XDocumentOverlay> xOverlay = lcl_GetDocumentOverlay(xModel);
+
+    rtl::Reference<EmptyBoundsOverlayPainter> xPainter(new EmptyBoundsOverlayPainter);
+    sal_Int32 nHandle = xOverlay->addOverlay(xPainter, 0);
+
+    // When a repaint is triggered
+    SwEditWin& rEditWin = getSwDocShell()->GetView()->GetEditWin();
+    xOverlay->invalidateOverlay(css::awt::Rectangle(0, 0, 0, 0));
+    rEditWin.Invalidate();
+    rEditWin.PaintImmediately();
+
+    // Then paintOverlay() must have been called (fallback to full visible area),
+    // not skipped.
+    CPPUNIT_ASSERT(xPainter->m_nPaintCount >= 1);
+
+    xOverlay->removeOverlay(nHandle);
+}
+
 CPPUNIT_PLUGIN_IMPLEMENT();
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */
